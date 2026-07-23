@@ -1,0 +1,35 @@
+# Environment
+.env
+.env.*
+*.env
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Build
+target/
+dist/
+build/
+*.class
+*.jar
+*.war
+
+# Logs
+*.log
+logs/
+
+# Docker
+*.tar
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.bak
+.cache/

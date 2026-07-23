@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.tds</groupId>
+        <artifactId>dos-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>dos-service</artifactId>
+    <packaging>jar</packaging>
+    <name>DOS-service</name>
+    <description>交付平台业务逻辑层</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.tds</groupId>
+            <artifactId>dos-dal</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- MSP Service -->
+        <dependency>
+            <groupId>com.tds</groupId>
+            <artifactId>tds-dos-msp-service</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Kubernetes Client -->
+        <dependency>
+            <groupId>io.kubernetes</groupId>
+            <artifactId>client-java</artifactId>
+            <version>18.0.0</version>
+        </dependency>
+
+        <!-- HTTP Client -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>5.3</version>
+        </dependency>
+
+        <!-- MySQL JDBC for database sync -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.2.0</version>
+        </dependency>
+
+        <!-- Redis -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- SFTP support -->
+        <dependency>
+            <groupId>com.github.mwiede</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.2.16</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

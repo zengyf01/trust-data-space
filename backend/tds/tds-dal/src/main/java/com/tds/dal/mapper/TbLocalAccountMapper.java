@@ -1,0 +1,12 @@
+package com.tds.dal.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.tds.dal.entity.TbLocalAccount;
+import org.apache.ibatis.annotations.Mapper;
+
+/**
+ * 本地账户Mapper
+ */
+@Mapper
+public interface TbLocalAccountMapper extends BaseMapper<TbLocalAccount> {
+}

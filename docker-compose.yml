@@ -1,0 +1,351 @@
+# ============================================================
+# 可信数据空间 - Docker Compose 编排
+#
+# 常用命令：
+#   首次启动：    docker-compose up -d --build
+#   重新构建：    docker-compose build --no-cache
+#   查看日志：    docker-compose logs -f tds-api
+#   停止服务：    docker-compose down
+#   完全清理：    docker-compose down -v
+# ============================================================
+
+services:
+
+  # ============================================================
+  # 基础服务：MySQL / Redis
+  # ============================================================
+  mysql:
+    image: mysql:8.0
+    container_name: tds-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "${MYSQL_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 统一入口脚本（首次启动时执行）— 文件名前缀 00- 确保最先执行
+      - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      # 各模块 SQL 源文件
+      - ./backend/tds/sql:/docker-entrypoint-initdb.d/tds:ro
+      - ./backend/datar/sql:/docker-entrypoint-initdb.d/datar:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max_connections=500
+      - --innodb-buffer-pool-size=512M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ============================================================
+  # DOS 独立数据库
+  # ============================================================
+  dos-mysql:
+    image: mysql:8.0
+    container_name: dos-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "${DOS_MYSQL_PORT:-3307}:3306"
+    volumes:
+      - dos_mysql_data:/var/lib/mysql
+      - ./backend/dos/sql/init_dos.sql:/docker-entrypoint-initdb.d/01-init_dos.sql:ro
+      - ./backend/dos/sql/init_msp.sql:/docker-entrypoint-initdb.d/02-init_msp.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max_connections=500
+      - --innodb-buffer-pool-size=512M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    container_name: tds-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ============================================================
+  # TDS 服务平台 (端口 8081)
+  # ============================================================
+  tds-api:
+    build:
+      context: ./backend/tds
+      dockerfile: Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR}
+    image: tds/tds-api:latest
+    container_name: tds-api
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      JAVA_OPTS: "-Xms${JVM_XMS} -Xmx${JVM_XMX} -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/tds?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_REPOSITORIES_ENABLED: "false"
+    ports:
+      - "${TDS_API_PORT}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tds-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+
+  # ============================================================
+  # DOS 交付平台 (端口 8082)
+  # ============================================================
+  dos-api:
+    build:
+      context: ./backend/dos
+      dockerfile: Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR}
+    image: tds/dos-api:latest
+    container_name: dos-api
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      JAVA_OPTS: "-Xms${JVM_XMS} -Xmx${JVM_XMX} -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:mysql://dos-mysql:3306/dos?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_DATASOURCE_MSP_URL: jdbc:mysql://dos-mysql:3306/msp?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "${DOS_API_PORT}:8080"
+    depends_on:
+      dos-mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tds-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+
+  # ============================================================
+  # Datar 连接器 (端口 8083)
+  # ============================================================
+  datar-mysql:
+    image: mysql:8.0
+    container_name: datar-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "3308:3306"
+    volumes:
+      - datar_mysql_data:/var/lib/mysql
+      - ./backend/datar/sql:/docker-entrypoint-initdb.d:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  datar-api:
+    build:
+      context: ./backend/datar
+      dockerfile: Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR}
+    image: tds/datar-api:latest
+    container_name: datar-api
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      JAVA_OPTS: "-Xms${JVM_XMS} -Xmx${JVM_XMX} -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:mysql://datar-mysql:3306/datar?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+    ports:
+      - "${DATAR_API_PORT}:8083"
+    depends_on:
+      datar-mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tds-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+
+  # ============================================================
+  # 前端 (Nginx)
+  # ============================================================
+  tds-frontend:
+    build:
+      context: ./frontend/tds-frontend
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY}
+    image: tds/tds-frontend:latest
+    container_name: tds-frontend
+    restart: unless-stopped
+    ports:
+      - "${TDS_FRONTEND_PORT}:80"
+    depends_on:
+      - tds-api
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  dos-frontend:
+    build:
+      context: ./frontend/dos-frontend
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY}
+    image: tds/dos-frontend:latest
+    container_name: dos-frontend
+    restart: unless-stopped
+    ports:
+      - "${DOS_FRONTEND_PORT}:80"
+    depends_on:
+      - dos-api
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  datar-frontend:
+    build:
+      context: ./frontend/datar-frontend
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY}
+    image: tds/datar-frontend:latest
+    container_name: datar-frontend
+    restart: unless-stopped
+    ports:
+      - "${DATAR_FRONTEND_PORT}:80"
+    depends_on:
+      - datar-api
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+# ============================================================
+# 持久化卷
+# ============================================================
+volumes:
+  mysql_data:
+    name: tds-mysql-data
+  dos_mysql_data:
+    name: dos-mysql-data
+  datar_mysql_data:
+    name: datar-mysql-data
+  redis_data:
+    name: tds-redis-data
+
+# ============================================================
+# 网络
+# ============================================================
+networks:
+  tds-net:
+    driver: bridge
+    name: tds-net

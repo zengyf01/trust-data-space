@@ -1,0 +1,6 @@
+服务平台代码路径：D:\project\tds
+连接器代码路径：D:\project\datar
+交付平台代码路径：D:\project\delivery\dos
+密算平台代码路径：https://github.com/zengyf01/msp.git
+机密容器代码路径：D:\project\confidential-containers
+开源隐私计算平台代码路径：D:\project\secretflow
