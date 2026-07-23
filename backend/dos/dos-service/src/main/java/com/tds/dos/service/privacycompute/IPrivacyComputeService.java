@@ -158,6 +158,29 @@ public interface IPrivacyComputeService {
      */
     void nodeHeartbeat(String nodeId);
 
+    /**
+     * 获取节点列表
+     * @param page 页码
+     * @param size 每页大小
+     * @param status 节点状态筛选 (可选)
+     * @return 节点列表分页结果
+     */
+    Map<String, Object> listNodes(int page, int size, Integer status);
+
+    /**
+     * 注销节点
+     * @param nodeId 节点ID
+     * @return 是否成功
+     */
+    boolean unregisterNode(String nodeId);
+
+    /**
+     * 更新节点名称
+     * @param nodeId 节点ID
+     * @param nodeName 新名称
+     */
+    void updateNodeName(String nodeId, String nodeName);
+
     // ==================== 数据源管理 ====================
 
     /**

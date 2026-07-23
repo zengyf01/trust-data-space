@@ -13,7 +13,7 @@ import java.util.Map;
  * 提供 PSI、MPC、联邦学习等隐私计算任务的REST API
  */
 @RestController
-@RequestMapping("/api/dos/privacy")
+@RequestMapping("/privacy")
 public class PrivacyComputeController {
 
     @Autowired
@@ -240,6 +240,43 @@ public class PrivacyComputeController {
     public ApiResponse<?> nodeHeartbeat(@PathVariable String nodeId) {
         privacyComputeService.nodeHeartbeat(nodeId);
         return ApiResponse.success(Map.of("nodeId", nodeId, "status", "OK"));
+    }
+
+    /**
+     * 获取节点列表
+     */
+    @GetMapping("/node/list")
+    public ApiResponse<Map<String, Object>> listNodes(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer status) {
+        Map<String, Object> result = privacyComputeService.listNodes(page, size, status);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 注销节点
+     */
+    @DeleteMapping("/node/{nodeId}")
+    public ApiResponse<?> unregisterNode(@PathVariable String nodeId) {
+        boolean success = privacyComputeService.unregisterNode(nodeId);
+        if (success) {
+            return ApiResponse.success(Map.of("nodeId", nodeId, "result", "注销成功"));
+        }
+        return ApiResponse.error("注销节点失败");
+    }
+
+    /**
+     * 更新节点名称
+     */
+    @PutMapping("/node/{nodeId}/name")
+    public ApiResponse<?> updateNodeName(@PathVariable String nodeId, @RequestBody Map<String, String> params) {
+        String nodeName = params.get("nodeName");
+        if (nodeName == null || nodeName.trim().isEmpty()) {
+            return ApiResponse.error("节点名称不能为空");
+        }
+        privacyComputeService.updateNodeName(nodeId, nodeName.trim());
+        return ApiResponse.success(Map.of("nodeId", nodeId, "nodeName", nodeName.trim()));
     }
 
     // ==================== 数据源管理 ====================

@@ -1,0 +1,105 @@
+# ============================================================
+# RAY 计算节点 - Docker Compose 编排
+#
+# 启动命令：
+#   启动节点：    docker-compose -f docker-compose.ray.yml up -d
+#   查看日志：    docker-compose -f docker-compose.ray.yml logs -f ray-head
+#   停止节点：    docker-compose -f docker-compose.ray.yml down
+# ============================================================
+
+services:
+
+  # ============================================================
+  # RAY Head 节点
+  # ============================================================
+  ray-head:
+    build:
+      context: ./backend/ray-node
+      dockerfile: Dockerfile
+    container_name: ray-head
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ID: ray-head-001
+      NODE_NAME: RAY计算节点1
+      NODE_MODE: RAY
+      RAY_HEAD_ADDRESS: ""
+      DOS_API_URL: http://dos-api:8080
+      DOS_API_EXTERNAL: http://localhost:8082
+      HEARTBEAT_INTERVAL: 30
+    ports:
+      - "6380:6379"
+      - "8266:8265"
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "ray health-check || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ============================================================
+  # RAY Worker 节点 1
+  # ============================================================
+  ray-worker-1:
+    build:
+      context: ./backend/ray-node
+      dockerfile: Dockerfile
+    container_name: ray-worker-1
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ID: ray-worker-001
+      NODE_NAME: RAY计算节点2
+      NODE_MODE: RAY
+      RAY_HEAD_ADDRESS: ray-head:6379
+      DOS_API_URL: http://dos-api:8080
+      DOS_API_EXTERNAL: http://localhost:8082
+      HEARTBEAT_INTERVAL: 30
+    depends_on:
+      - ray-head
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ============================================================
+  # RAY Worker 节点 2
+  # ============================================================
+  ray-worker-2:
+    build:
+      context: ./backend/ray-node
+      dockerfile: Dockerfile
+    container_name: ray-worker-2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ID: ray-worker-002
+      NODE_NAME: RAY计算节点3
+      NODE_MODE: RAY
+      RAY_HEAD_ADDRESS: ray-head:6379
+      DOS_API_URL: http://dos-api:8080
+      DOS_API_EXTERNAL: http://localhost:8082
+      HEARTBEAT_INTERVAL: 30
+    depends_on:
+      - ray-head
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+# ============================================================
+# 网络
+# ============================================================
+networks:
+  tds-net:
+    external: true
+    name: tds-net

@@ -13,4 +13,5 @@ public interface INodeService {
     boolean heartbeat(String nodeId);
     TbMspNode getNode(String nodeId);
     PageResult<TbMspNode> listNodes(int page, int size, NodeStatus status);
+    void updateNodeName(String nodeId, String nodeName);
 }

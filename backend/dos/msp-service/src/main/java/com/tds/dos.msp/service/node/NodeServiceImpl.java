@@ -12,9 +12,11 @@ import com.tds.dos.msp.dal.mapper.TbMspNodeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -33,9 +35,8 @@ public class NodeServiceImpl implements INodeService {
     public String registerNode(NodeDTO dto) {
         String nodeId = dto.getNodeId() != null ? dto.getNodeId() : UUID.randomUUID().toString().replace("-", "");
 
-        TbMspNode existing = nodeMapper.selectOne(
-            new LambdaQueryWrapper<TbMspNode>().eq(TbMspNode::getfNodeId, nodeId)
-        );
+        // 先物理删除已存在的记录（包括软删除的），避免唯一索引冲突
+        nodeMapper.physicalDeleteByNodeId(nodeId);
 
         TbMspNode node = new TbMspNode();
         node.setfNodeId(nodeId);
@@ -47,21 +48,21 @@ public class NodeServiceImpl implements INodeService {
         node.setfLastHeartbeat(LocalDateTime.now());
         node.setfCreateTime(LocalDateTime.now());
         node.setfUpdateTime(LocalDateTime.now());
+        node.setfDeleteMark(0);
 
         try {
-            node.setfCapabilities(objectMapper.writeValueAsString(dto.getCapabilities()));
-            node.setfTags(objectMapper.writeValueAsString(dto.getTags()));
+            if (dto.getCapabilities() != null) {
+                node.setfCapabilities(objectMapper.writeValueAsString(dto.getCapabilities()));
+            }
+            if (dto.getTags() != null) {
+                node.setfTags(objectMapper.writeValueAsString(dto.getTags()));
+            }
         } catch (Exception e) {
             log.warn("Failed to serialize capabilities/tags", e);
         }
 
-        if (existing != null) {
-            node.setfId(existing.getfId());
-            nodeMapper.updateById(node);
-        } else {
-            node.setfId(UUID.randomUUID().toString().replace("-", ""));
-            nodeMapper.insert(node);
-        }
+        node.setfId(UUID.randomUUID().toString().replace("-", ""));
+        nodeMapper.insert(node);
 
         log.info("Node registered: {}", nodeId);
         return nodeId;
@@ -115,5 +116,45 @@ public class NodeServiceImpl implements INodeService {
         IPage<TbMspNode> result = nodeMapper.selectPage(pageParam, wrapper);
 
         return PageResult.of(result.getRecords(), result.getTotal(), page, size);
+    }
+
+    @Override
+    public void updateNodeName(String nodeId, String nodeName) {
+        TbMspNode node = nodeMapper.selectOne(
+            new LambdaQueryWrapper<TbMspNode>().eq(TbMspNode::getfNodeId, nodeId)
+        );
+        if (node == null) {
+            throw new BusinessException("Node not found: " + nodeId);
+        }
+        node.setfNodeName(nodeName);
+        node.setfUpdateTime(LocalDateTime.now());
+        nodeMapper.updateById(node);
+        log.info("Node {} name updated to: {}", nodeId, nodeName);
+    }
+
+    /**
+     * 定时检测离线节点
+     * 每分钟执行一次，检查所有在线节点的最后心跳时间
+     * 如果超过1分钟没有心跳，则标记为离线
+     */
+    @Scheduled(fixedRate = 10000) // 每10秒执行一次
+    public void checkOfflineNodes() {
+        List<TbMspNode> onlineNodes = nodeMapper.selectList(
+            new LambdaQueryWrapper<TbMspNode>()
+                .eq(TbMspNode::getfStatus, NodeStatus.ONLINE.getCode())
+                .eq(TbMspNode::getfDeleteMark, 0)
+        );
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime threshold = now.minusMinutes(1); // 超过1分钟没心跳视为离线
+
+        for (TbMspNode node : onlineNodes) {
+            if (node.getfLastHeartbeat() != null && node.getfLastHeartbeat().isBefore(threshold)) {
+                node.setfStatus(NodeStatus.OFFLINE.getCode());
+                node.setfUpdateTime(now);
+                nodeMapper.updateById(node);
+                log.info("Node {} marked as OFFLINE (last heartbeat: {})", node.getfNodeId(), node.getfLastHeartbeat());
+            }
+        }
     }
 }

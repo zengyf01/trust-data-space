@@ -408,6 +408,57 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
     }
 
     @Override
+    public Map<String, Object> listNodes(int page, int size, Integer status) {
+        com.tds.dos.msp.common.enums.NodeStatus nodeStatus = null;
+        if (status != null && status > 0) {
+            nodeStatus = com.tds.dos.msp.common.enums.NodeStatus.fromCode(status);
+        }
+        com.tds.dos.msp.common.core.PageResult<com.tds.dos.msp.dal.entity.TbMspNode> pageResult =
+            nodeService.listNodes(page, size, nodeStatus);
+
+        // 转换为前端期望的格式
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (pageResult != null && pageResult.getList() != null) {
+            for (com.tds.dos.msp.dal.entity.TbMspNode node : pageResult.getList()) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("nodeId", node.getfNodeId());
+                item.put("nodeName", node.getfNodeName());
+                item.put("endpoint", node.getfEndpoint());
+                item.put("externalEndpoint", node.getfExternalEndpoint());
+                item.put("nodeMode", node.getfNodeMode());
+                item.put("status", node.getfStatus() != null && node.getfStatus() == 1 ? "ONLINE" : "OFFLINE");
+                item.put("lastHeartbeat", node.getfLastHeartbeat() != null ? node.getfLastHeartbeat().toString() : null);
+                item.put("capabilities", node.getfCapabilities());
+                item.put("tags", node.getfTags());
+                list.add(item);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("list", list);
+        long total = 0;
+        if (pageResult != null && pageResult.getPagination() != null) {
+            total = pageResult.getPagination().getTotal();
+        }
+        result.put("pagination", Map.of(
+            "currentPage", page,
+            "pageSize", size,
+            "total", total
+        ));
+        return result;
+    }
+
+    @Override
+    public boolean unregisterNode(String nodeId) {
+        return nodeService.unregisterNode(nodeId);
+    }
+
+    @Override
+    public void updateNodeName(String nodeId, String nodeName) {
+        nodeService.updateNodeName(nodeId, nodeName);
+    }
+
+    @Override
     public String registerDatasource(String datasourceId, String datasourceType, Map<String, String> connectionInfo) {
         // 数据源注册 - 实际实现取决于MSP平台API
         Map<String, Object> params = new HashMap<>();
