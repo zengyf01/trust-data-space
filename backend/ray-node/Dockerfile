@@ -17,11 +17,14 @@ RUN pip install --no-cache-dir secretflow==1.14.0b0
 # Create work directory
 WORKDIR /app
 
-# Copy startup script
+# Copy startup script and PSI service
 COPY start.sh /app/start.sh
+COPY psi_service.py /app/psi_service.py
+COPY agent.py /app/agent.py
+COPY data/ /data/
 
-# Expose Ray ports
-EXPOSE 6379 8265 10001
+# Expose Ray ports and PSI service port
+EXPOSE 6379 8265 10001 5000
 
 # Entry point
 ENTRYPOINT ["bash", "/app/start.sh"]

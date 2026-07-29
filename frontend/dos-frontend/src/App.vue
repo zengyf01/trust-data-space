@@ -37,6 +37,7 @@
             </template>
             <a-menu-item key="/user"><UserOutlined /><span>用户管理</span></a-menu-item>
             <a-menu-item key="/node"><ClusterOutlined /><span>节点管理</span></a-menu-item>
+            <a-menu-item key="/ray-cluster"><CloudServerOutlined /><span>集群管理</span></a-menu-item>
             <a-menu-item key="/strategy"><SettingOutlined /><span>策略配置</span></a-menu-item>
           </a-sub-menu>
         </a-menu>
@@ -137,6 +138,7 @@ const menuItems = [
   { key: '/datasources', label: '数据服务', icon: 'DatabaseOutlined', group: 'main' },
   { key: '/user', label: '用户管理', icon: 'UserOutlined', group: 'system' },
   { key: '/node', label: '节点管理', icon: 'ClusterOutlined', group: 'system' },
+  { key: '/ray-cluster', label: '集群管理', icon: 'CloudServerOutlined', group: 'system' },
   { key: '/strategy', label: '策略配置', icon: 'SettingOutlined', group: 'system' }
 ]
 

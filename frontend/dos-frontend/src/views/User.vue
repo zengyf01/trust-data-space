@@ -63,7 +63,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import axios from 'axios'
+import api from '../api'
 
 const loading = ref(false)
 const users = ref([])
@@ -137,13 +137,13 @@ const handleSubmit = async () => {
     let response
 
     if (isEdit.value) {
-      response = await axios.put(`/api/user/${form.value.userId}`, {
+      response = await api.put(`/user/${form.value.userId}`, {
         email: form.value.email,
         phone: form.value.phone,
         role: form.value.role
       })
     } else {
-      response = await axios.post('/api/user', {
+      response = await api.post('/user', {
         username: form.value.username,
         password: form.value.password,
         email: form.value.email,
@@ -168,7 +168,7 @@ const handleSubmit = async () => {
 
 const handleDelete = async (record) => {
   try {
-    const response = await axios.delete(`/api/user/${record.userId}`)
+    const response = await api.delete(`/user/${record.userId}`)
     if (response.data.code === 200) {
       message.success('用户删除成功')
       loadData()
@@ -182,7 +182,7 @@ const handleDelete = async (record) => {
 
 const handleToggleEnabled = async (record, checked) => {
   try {
-    const response = await axios.patch(`/api/user/${record.userId}/enabled?enabled=${checked}`)
+    const response = await api.patch(`/user/${record.userId}/enabled?enabled=${checked}`)
     if (response.data.code === 200) {
       message.success(checked ? '用户已启用' : '用户已禁用')
       loadData()
@@ -203,7 +203,7 @@ const handleTableChange = (pag) => {
 const loadData = async () => {
   try {
     loading.value = true
-    const response = await axios.get('/api/user/page', {
+    const response = await api.get('/user/page', {
       params: {
         currentPage: pagination.value.current,
         pageSize: pagination.value.pageSize

@@ -22,7 +22,7 @@ public class TdsConnectorClient implements ITdsConnectorClient {
 
     private static final Logger logger = LoggerFactory.getLogger(TdsConnectorClient.class);
 
-    @Value("${tds.api.url:http://localhost:8081}")
+    @Value("${tds.api.url:http://tds-api}")
     private String tdsApiUrl;
 
     @Autowired

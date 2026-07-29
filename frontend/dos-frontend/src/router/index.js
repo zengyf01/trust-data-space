@@ -68,6 +68,12 @@ const routes = [
     component: () => import('../views/TaskManage.vue'),
     meta: { requiresAuth: true }
   },
+  {
+    path: '/ray-cluster',
+    name: 'RayCluster',
+    component: () => import('../views/RayCluster.vue'),
+    meta: { requiresAuth: true }
+  },
   // MSP 旧路由（保留兼容）
   {
     path: '/dashboard',

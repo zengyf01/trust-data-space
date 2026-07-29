@@ -5,6 +5,7 @@ import com.tds.dos.service.privacycompute.IPrivacyComputeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,6 +51,35 @@ public class PrivacyComputeController {
     }
 
     /**
+     * 获取任务详情
+     */
+    @GetMapping("/task/{taskId}/detail")
+    public ApiResponse<?> getTaskDetail(@PathVariable String taskId) {
+        com.tds.dos.dal.msp.entity.TbTask task = privacyComputeService.getTaskById(taskId);
+        if (task == null) {
+            return ApiResponse.error("任务不存在");
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("taskId", task.getfId());
+        data.put("taskCode", task.getfTaskCode());
+        data.put("name", task.getfName());
+        data.put("type", task.getfType());
+        data.put("status", task.getfStatus());
+        data.put("algorithm", task.getfAlgorithm());
+        data.put("participants", task.getfParticipants());
+        data.put("nodeMode", task.getfNodeMode());
+        data.put("description", task.getfDescription());
+        data.put("parameters", task.getfParameters());
+        data.put("code", task.getfCode());
+        data.put("result", task.getfResult());
+        data.put("executionLog", task.getfExecutionLog());
+        data.put("creator", task.getfCreator());
+        data.put("createTime", task.getfCreateTime() != null ? task.getfCreateTime().toString() : null);
+        data.put("updateTime", task.getfUpdateTime() != null ? task.getfUpdateTime().toString() : null);
+        return ApiResponse.success(data);
+    }
+
+    /**
      * 获取任务结果
      */
     @GetMapping("/task/{taskId}/result")
@@ -59,12 +89,41 @@ public class PrivacyComputeController {
     }
 
     /**
+     * 获取任务生成的代码（Python代码）
+     */
+    @GetMapping("/task/{taskId}/code")
+    public ApiResponse<?> getTaskCode(@PathVariable String taskId) {
+        String code = privacyComputeService.getTaskCode(taskId);
+        return ApiResponse.success(Map.of("taskId", taskId, "code", code));
+    }
+
+    /**
      * 取消任务
      */
     @PostMapping("/task/{taskId}/cancel")
     public ApiResponse<?> cancelTask(@PathVariable String taskId) {
         privacyComputeService.cancelTask(taskId);
         return ApiResponse.success(Map.of("taskId", taskId, "status", "CANCELLED"));
+    }
+
+    /**
+     * 删除任务
+     */
+    @DeleteMapping("/task/{taskId}")
+    public ApiResponse<?> deleteTask(@PathVariable String taskId) {
+        privacyComputeService.deleteTask(taskId);
+        return ApiResponse.success(Map.of("taskId", taskId, "result", "删除成功"));
+    }
+
+    /**
+     * 获取任务列表
+     */
+    @GetMapping("/task/list")
+    public ApiResponse<Map<String, Object>> listTasks(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Map<String, Object> result = privacyComputeService.listTasks(page, size);
+        return ApiResponse.success(result);
     }
 
     // ==================== PSI 求交 ====================

@@ -16,19 +16,13 @@ RUN mkdir -p /root/.m2 && \
 COPY pom.xml ./
 COPY dos-common/pom.xml  dos-common/
 COPY dos-dal/pom.xml     dos-dal/
-COPY msp-common/pom.xml  msp-common/
-COPY msp-dal/pom.xml     msp-dal/
-COPY msp-service/pom.xml msp-service/
 COPY dos-service/pom.xml dos-service/
 COPY dos-api/pom.xml     dos-api/
 
-RUN mkdir -p dos-common/src dos-dal/src msp-common/src msp-dal/src msp-service/src dos-service/src dos-api/src
+RUN mkdir -p dos-common/src dos-dal/src dos-service/src dos-api/src
 
 COPY dos-common/src  dos-common/src
 COPY dos-dal/src     dos-dal/src
-COPY msp-common/src  msp-common/src
-COPY msp-dal/src     msp-dal/src
-COPY msp-service/src msp-service/src
 COPY dos-service/src dos-service/src
 COPY dos-api/src     dos-api/src
 

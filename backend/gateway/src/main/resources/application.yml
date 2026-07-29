@@ -1,0 +1,8 @@
+spring:
+  profiles:
+    active: prod
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    com.tds.gateway: DEBUG

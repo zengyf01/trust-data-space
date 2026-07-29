@@ -1,0 +1,47 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: tds-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:GATEWAY_GROUP}
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: tds-route
+          uri: lb://tds-api
+          predicates:
+            - Path=/api/tds/**
+          filters:
+            - StripPrefix=1
+
+        - id: dos-route
+          uri: lb://dos-api
+          predicates:
+            - Path=/api/dos/**
+          filters:
+            - StripPrefix=1
+
+        - id: datar-route
+          uri: lb://datar-api
+          predicates:
+            - Path=/api/datar/**
+          filters:
+            - StripPrefix=1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always

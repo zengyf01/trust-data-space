@@ -19,7 +19,7 @@ public class TdsUserCenterClient {
 
     private static final Logger logger = LoggerFactory.getLogger(TdsUserCenterClient.class);
 
-    @Value("${tds.api.url:http://tds-api:8080}")
+    @Value("${tds.api.url:http://tds-api/api/tds}")
     private String tdsApiUrl;
 
     @Autowired

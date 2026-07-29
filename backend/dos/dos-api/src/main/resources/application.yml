@@ -37,7 +37,7 @@ spring:
             connection-timeout: 30000
         msp:
           driver-class-name: com.mysql.cj.jdbc.Driver
-          url: jdbc:mysql://dos-mysql:3306/msp?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          url: jdbc:mysql://dos-mysql:3306/dos?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
           username: root
           password: ${SPRING_DATASOURCE_PASSWORD}
           hikari:
@@ -72,6 +72,12 @@ api:
     timeout: 30000
     connect:
       timeout: 10000
+
+# Ray 集群配置
+ray:
+  # Ray Head 节点的 Ray 协议地址（用于 sf.init 连接）
+  # 注意：节点动态注册后，真实地址从节点表的 f_ray_endpoint 字段获取
+  address: ${RAY_ADDRESS:ray://ray-head:10001}
 
 logging:
   level:

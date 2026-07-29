@@ -39,10 +39,38 @@ public interface IPrivacyComputeService {
     String getTaskResult(String taskId);
 
     /**
+     * 获取任务生成的代码（Python代码）
+     * @param taskId 任务ID
+     * @return 生成的代码
+     */
+    String getTaskCode(String taskId);
+
+    /**
      * 取消任务
      * @param taskId 任务ID
      */
     void cancelTask(String taskId);
+
+    /**
+     * 删除任务
+     * @param taskId 任务ID
+     */
+    void deleteTask(String taskId);
+
+    /**
+     * 根据ID获取任务详情
+     * @param taskId 任务ID
+     * @return 任务实体
+     */
+    com.tds.dos.dal.msp.entity.TbTask getTaskById(String taskId);
+
+    /**
+     * 获取任务列表
+     * @param page 页码
+     * @param size 每页大小
+     * @return 任务列表分页结果
+     */
+    Map<String, Object> listTasks(int page, int size);
 
     // ==================== PSI 求交 ====================
 

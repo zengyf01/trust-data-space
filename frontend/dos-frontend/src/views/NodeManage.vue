@@ -33,7 +33,6 @@
                   <template v-else-if="column.key === 'action'">
                     <a-space>
                       <a-button size="small" @click="startEditName(record)">编辑</a-button>
-                      <a-button size="small" danger @click="handleUnregister(record)">注销</a-button>
                     </a-space>
                   </template>
                 </template>
@@ -54,6 +53,9 @@
             <a-form-item label="节点端点">
               <a-input v-model:value="registerForm.endpoint" placeholder="如: http://node1:8080" />
             </a-form-item>
+            <a-form-item label="Ray端点">
+              <a-input v-model:value="registerForm.rayEndpoint" placeholder="如: ray://node1:10001" />
+            </a-form-item>
             <a-form-item label="节点模式">
               <a-select v-model:value="registerForm.nodeMode">
                 <a-select-option value="RAY">RAY</a-select-option>
@@ -68,7 +70,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import axios from 'axios'
 
 const loading = ref(false)
@@ -80,6 +82,7 @@ const registerForm = ref({
   nodeId: '',
   nodeName: '',
   endpoint: '',
+  rayEndpoint: '',
   nodeMode: 'RAY'
 })
 
@@ -133,6 +136,7 @@ const handleRegister = async () => {
       nodeId: registerForm.value.nodeId,
       nodeName: registerForm.value.nodeName,
       endpoint: registerForm.value.endpoint,
+      rayEndpoint: registerForm.value.rayEndpoint,
       nodeMode: registerForm.value.nodeMode
     })
     message.success('节点注册成功')
@@ -145,24 +149,6 @@ const handleRegister = async () => {
   }
 }
 
-const handleUnregister = (record) => {
-  Modal.confirm({
-    title: '确认注销节点',
-    content: `确定要注销节点「${record.nodeName}」吗？注销后该节点将不再参与计算任务。`,
-    okText: '确认注销',
-    cancelText: '取消',
-    okType: 'danger',
-    async onOk() {
-      try {
-        await axios.delete(`/api/dos/privacy/node/${record.nodeId}`)
-        message.success('节点注销成功')
-        loadNodes()
-      } catch (error) {
-        message.error('注销失败: ' + (error.message || '未知错误'))
-      }
-    }
-  })
-}
 
 const loadNodes = async () => {
   loading.value = true

@@ -7,32 +7,54 @@
           <a-form :model="psiForm" layout="vertical">
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="任务名称">
+                <a-form-item label="任务名称" required>
                   <a-input v-model:value="psiForm.taskName" placeholder="请输入任务名称" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="关联键列">
+                <a-form-item label="关联键列" required>
                   <a-input v-model:value="psiForm.keyColumn" placeholder="如: id, user_id" />
                 </a-form-item>
               </a-col>
             </a-row>
+            <a-divider>参与节点</a-divider>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="A方数据路径">
-                  <a-input v-model:value="psiForm.partyADataPath" placeholder="/data/party_a.csv" />
+                <a-form-item label="A方节点" required>
+                  <a-select v-model:value="psiForm.partyANodeId" placeholder="选择A方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
+                    <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === psiForm.partyBNodeId">
+                      {{ node.nodeName }} ({{ node.nodeMode }})
+                    </a-select-option>
+                  </a-select>
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="B方数据路径">
-                  <a-input v-model:value="psiForm.partyBDataPath" placeholder="/data/party_b.csv" />
+                <a-form-item label="B方节点" required>
+                  <a-select v-model:value="psiForm.partyBNodeId" placeholder="选择B方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
+                    <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === psiForm.partyANodeId">
+                      {{ node.nodeName }} ({{ node.nodeMode }})
+                    </a-select-option>
+                  </a-select>
                 </a-form-item>
               </a-col>
             </a-row>
             <a-row :gutter="16">
+              <a-col :span="12">
+                <a-form-item label="A方数据路径" required>
+                  <a-input v-model:value="psiForm.partyADataPath" placeholder="/data/party_a.csv" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item label="B方数据路径" required>
+                  <a-input v-model:value="psiForm.partyBDataPath" placeholder="/data/party_b.csv" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-divider>计算配置</a-divider>
+            <a-row :gutter="16">
               <a-col :span="8">
                 <a-form-item label="协议类型">
-                  <a-select v-model:value="psiForm.protocol" placeholder="选择协议">
+                  <a-select v-model:value="psiForm.protocol">
                     <a-select-option value="ECPSI">ECPSI</a-select-option>
                     <a-select-option value="RR22PSI">RR22PSI</a-select-option>
                   </a-select>
@@ -40,7 +62,7 @@
               </a-col>
               <a-col :span="8">
                 <a-form-item label="结果类型">
-                  <a-select v-model:value="psiForm.resultType" placeholder="选择结果">
+                  <a-select v-model:value="psiForm.resultType">
                     <a-select-option value="INTERSECTION">交集</a-select-option>
                     <a-select-option value="UNION">并集</a-select-option>
                   </a-select>
@@ -323,7 +345,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import axios from 'axios'
@@ -339,6 +361,10 @@ import {
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
+
+onMounted(() => {
+  loadOnlineNodes()
+})
 
 const createType = ref('psi')
 const createLoading = ref(false)
@@ -370,7 +396,7 @@ const handleCreateTask = () => {
       showDagSaveModal.value = true
       return
     }
-    router.push('/privacy')
+    router.push('/privacy?refresh=1')
   } finally {
     createLoading.value = false
   }
@@ -381,10 +407,20 @@ const handleExecutePsi = async () => {
     message.warning('请填写完整信息')
     return
   }
+  if (!psiForm.partyANodeId || !psiForm.partyBNodeId) {
+    message.warning('请选择A方和B方节点')
+    return
+  }
+  if (psiForm.partyANodeId === psiForm.partyBNodeId) {
+    message.warning('A方节点和B方节点不能相同')
+    return
+  }
   psiLoading.value = true
   try {
     const response = await axios.post('/api/dos/privacy/psi/execute', {
       taskName: psiForm.taskName,
+      partyANodeId: psiForm.partyANodeId,
+      partyBNodeId: psiForm.partyBNodeId,
       partyADataPath: psiForm.partyADataPath,
       partyBDataPath: psiForm.partyBDataPath,
       keyColumn: psiForm.keyColumn,
@@ -727,6 +763,8 @@ async function confirmSaveDag() {
 
 const psiForm = reactive({
   taskName: '',
+  partyANodeId: undefined,
+  partyBNodeId: undefined,
   partyADataPath: '',
   partyBDataPath: '',
   keyColumn: '',
@@ -734,6 +772,29 @@ const psiForm = reactive({
   resultType: 'INTERSECTION',
   nodeMode: 'RAY'
 })
+
+const onlineNodes = ref([])
+const loadOnlineNodes = async () => {
+  try {
+    const res = await axios.get('/api/dos/privacy/node/list', {
+      params: { page: 1, size: 100 }
+    })
+    if (res.data.code === 200) {
+      onlineNodes.value = res.data.data?.list || []
+    }
+  } catch (error) {
+    console.error('加载节点列表失败:', error)
+  }
+}
+
+const filterNodeOption = (input, option) => {
+  return option.children.text.toLowerCase().indexOf(input.toLowerCase()) >= 0
+}
+
+const handleNodeChange = () => {
+  // 触发响应式更新，确保disabled状态立即生效
+  onlineNodes.value = [...onlineNodes.value]
+}
 
 const mpcForm = reactive({
   taskName: '',

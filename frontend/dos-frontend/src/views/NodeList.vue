@@ -15,7 +15,6 @@
               <template v-else-if="column.key === 'action'">
                 <a-space>
                   <a-button size="small" type="primary" @click="handleHeartbeat(record)">心跳</a-button>
-                  <a-button size="small" danger @click="handleUnregister(record)">注销</a-button>
                 </a-space>
               </template>
             </template>
@@ -113,15 +112,6 @@ const handleHeartbeat = async (record) => {
   }
 }
 
-const handleUnregister = async (record) => {
-  try {
-    await nodeAPI.unregister(record.fNodeId)
-    message.success('节点已注销')
-    loadNodes()
-  } catch (e) {
-    message.error('注销失败')
-  }
-}
 
 onMounted(loadNodes)
 </script>

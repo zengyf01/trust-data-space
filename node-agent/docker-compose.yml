@@ -1,0 +1,18 @@
+# 节点Agent服务
+# 在每个计算节点上运行此服务
+
+services:
+  node-agent:
+    image: tds/node-agent:latest
+    container_name: node-agent
+    ports:
+      - "8081:8081"
+    environment:
+      - AGENT_PORT=8081
+    volumes:
+      # 挂载Ray日志目录
+      - /tmp/ray-logs:/tmp/ray-logs
+    restart: unless-stopped
+    network_mode: host
+    # 注意：network_mode: host 时，ports映射无效
+    # 如需映射，可改为 bridge 模式并配置ports

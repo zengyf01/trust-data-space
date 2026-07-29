@@ -22,12 +22,6 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- MSP Service -->
-        <dependency>
-            <groupId>com.tds</groupId>
-            <artifactId>tds-dos-msp-service</artifactId>
-            <version>${project.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

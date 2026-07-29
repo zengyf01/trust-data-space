@@ -38,8 +38,12 @@ CREATE TABLE IF NOT EXISTS `tb_msp_node` (
   `f_node_name` VARCHAR(128) NOT NULL COMMENT '节点名称',
   `f_status` INT(2) DEFAULT 1 COMMENT '节点状态(1在线,2离线,3故障)',
   `f_node_mode` VARCHAR(32) DEFAULT 'RAY' COMMENT '节点模式(RAY/TEE)',
-  `f_endpoint` VARCHAR(256) DEFAULT NULL COMMENT '内部端点',
+  `f_endpoint` VARCHAR(256) DEFAULT NULL COMMENT 'Agent HTTP端点',
+  `f_machine_ip` VARCHAR(64) DEFAULT NULL COMMENT '宿主机IP',
+  `f_ray_port` INT DEFAULT 10001 COMMENT 'Ray服务端口',
+  `f_ray_status` VARCHAR(32) DEFAULT 'IDLE' COMMENT 'Ray状态(IDLE/STARTING/RUNNING/STOPPING)',
   `f_external_endpoint` VARCHAR(256) DEFAULT NULL COMMENT '外部端点',
+  `f_ray_endpoint` VARCHAR(256) DEFAULT NULL COMMENT 'Ray集群端点(ray://host:port)',
   `f_capabilities` TEXT DEFAULT NULL COMMENT '节点能力(JSON)',
   `f_tags` VARCHAR(512) DEFAULT NULL COMMENT '节点标签',
   `f_last_heartbeat` DATETIME DEFAULT NULL COMMENT '最后心跳时间',
@@ -50,6 +54,23 @@ CREATE TABLE IF NOT EXISTS `tb_msp_node` (
   UNIQUE KEY `uk_node_id` (`f_node_id`),
   KEY `idx_status` (`f_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP节点表';
+
+-- Ray集群表
+CREATE TABLE IF NOT EXISTS `tb_ray_cluster` (
+  `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
+  `f_cluster_id` VARCHAR(64) NOT NULL COMMENT '集群ID',
+  `f_cluster_name` VARCHAR(128) DEFAULT NULL COMMENT '集群名称',
+  `f_head_node_id` VARCHAR(64) DEFAULT NULL COMMENT 'Head节点ID',
+  `f_head_address` VARCHAR(256) DEFAULT NULL COMMENT 'Head地址(ray://host:port)',
+  `f_status` VARCHAR(32) DEFAULT 'CREATING' COMMENT '集群状态(CREATING/RUNNING/STOPPING/STOPPED)',
+  `f_participants` TEXT DEFAULT NULL COMMENT '参与节点列表JSON',
+  `f_create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `f_update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `f_delete_mark` INT(1) DEFAULT 0 COMMENT '删除标记(0未删,1已删)',
+  PRIMARY KEY (`f_id`),
+  UNIQUE KEY `uk_cluster_id` (`f_cluster_id`),
+  KEY `idx_status` (`f_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Ray集群表';
 
 -- MSP数据源表
 CREATE TABLE IF NOT EXISTS `tb_msp_datasource` (

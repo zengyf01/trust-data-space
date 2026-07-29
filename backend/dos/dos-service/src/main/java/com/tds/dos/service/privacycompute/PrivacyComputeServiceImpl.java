@@ -1,17 +1,25 @@
 package com.tds.dos.service.privacycompute;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tds.dos.msp.common.core.ApiResponse;
-import com.tds.dos.msp.common.enums.TaskStatus;
-import com.tds.dos.msp.common.enums.TaskType;
-import com.tds.dos.msp.service.node.INodeService;
-import com.tds.dos.msp.service.node.NodeDTO;
-import com.tds.dos.msp.service.task.ITaskService;
-import com.tds.dos.msp.service.task.TaskDTO;
+import com.tds.dos.common.core.ApiResponse;
+import com.tds.dos.common.enums.TaskStatus;
+import com.tds.dos.common.enums.TaskType;
+import com.tds.dos.dal.msp.entity.TbNode;
+import com.tds.dos.dal.msp.entity.TbTask;
+import com.tds.dos.dal.msp.mapper.TbTaskMapper;
+import com.tds.dos.service.msp.node.INodeService;
+import com.tds.dos.service.msp.node.NodeDTO;
+import com.tds.dos.service.msp.task.ITaskService;
+import com.tds.dos.service.msp.task.TaskDTO;
+import com.tds.dos.service.privacycompute.code.CodeGeneratorFactory;
+import com.tds.dos.service.privacycompute.code.ICodeGenerator;
+import com.tds.dos.service.ray.IAgentClient;
+import com.tds.dos.service.ray.IRayClusterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -27,6 +35,18 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
 
     @Autowired
     private INodeService nodeService;
+
+    @Autowired
+    private CodeGeneratorFactory codeGeneratorFactory;
+
+    @Autowired
+    private IRayClusterService rayClusterService;
+
+    @Autowired
+    private IAgentClient agentClient;
+
+    @Autowired
+    private TbTaskMapper taskMapper;
 
     // 任务状态常量 (与 MSP TaskStatus 对应)
     private static final int STATUS_CREATED = 1;
@@ -99,8 +119,64 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
     }
 
     @Override
+    public String getTaskCode(String taskId) {
+        ApiResponse<String> response = taskService.getTaskCode(taskId);
+        if (response != null && response.getData() != null) {
+            return response.getData();
+        }
+        return null;
+    }
+
+    @Override
     public void cancelTask(String taskId) {
         taskService.cancelTask(taskId);
+    }
+
+    @Override
+    public void deleteTask(String taskId) {
+        taskService.deleteTask(taskId);
+    }
+
+    @Override
+    public com.tds.dos.dal.msp.entity.TbTask getTaskById(String taskId) {
+        return taskService.getTask(taskId);
+    }
+
+    @Override
+    public Map<String, Object> listTasks(int page, int size) {
+        com.tds.dos.common.core.PageResult<com.tds.dos.dal.msp.entity.TbTask> pageResult =
+            taskService.listTasks(page, size, null, null);
+
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (pageResult != null && pageResult.getList() != null) {
+            for (com.tds.dos.dal.msp.entity.TbTask task : pageResult.getList()) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("taskId", task.getfId());
+                item.put("name", task.getfName());
+                item.put("type", task.getfType());
+                item.put("status", task.getfStatus());
+                item.put("createTime", task.getfCreateTime() != null ? task.getfCreateTime().toString() : null);
+                item.put("nodeMode", task.getfNodeMode());
+                item.put("description", task.getfDescription());
+                item.put("algorithm", task.getfAlgorithm());
+                item.put("parameters", task.getfParameters());
+                item.put("code", task.getfCode());
+                list.add(item);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("list", list);
+        long total = 0;
+        if (pageResult != null && pageResult.getPagination() != null) {
+            total = pageResult.getPagination().getTotal();
+        }
+        result.put("pagination", Map.of(
+            "currentPage", page,
+            "pageSize", size,
+            "total", total
+        ));
+        return result;
     }
 
     @Override
@@ -118,8 +194,222 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
         if (params.get("resultType") != null) {
             taskParams.put("resultType", params.get("resultType")); // INTERSECTION/UNION/...
         }
+        if (params.get("partyANodeId") != null) {
+            taskParams.put("partyANodeId", params.get("partyANodeId"));
+        }
+        if (params.get("partyBNodeId") != null) {
+            taskParams.put("partyBNodeId", params.get("partyBNodeId"));
+        }
 
-        return createTask(taskParams);
+        // 获取参与节点列表 - 优先使用参数中指定的节点，否则使用在线节点
+        List<String> participantNodeIds = new ArrayList<>();
+        String partyANodeIdParam = params.get("partyANodeId") != null ? (String) params.get("partyANodeId") : null;
+        String partyBNodeIdParam = params.get("partyBNodeId") != null ? (String) params.get("partyBNodeId") : null;
+
+        if (partyANodeIdParam != null && partyBNodeIdParam != null) {
+            // 使用参数中指定的节点
+            participantNodeIds.add(partyANodeIdParam);
+            participantNodeIds.add(partyBNodeIdParam);
+            log.info("Using specified nodes for PSI task: partyA={}, partyB={}", partyANodeIdParam, partyBNodeIdParam);
+        } else {
+            // 使用在线节点作为后备
+            List<String> availableNodes = getAvailableNodes();
+            if (availableNodes == null || availableNodes.isEmpty()) {
+                throw new RuntimeException("没有可用的节点来创建Ray集群");
+            }
+            // 至少需要2个节点进行PSI
+            if (availableNodes.size() < 2) {
+                throw new RuntimeException("PSI任务至少需要2个节点，当前可用节点数量: " + availableNodes.size());
+            }
+            // 取前2个节点
+            participantNodeIds.add(availableNodes.get(0));
+            participantNodeIds.add(availableNodes.get(1));
+            log.info("Using first two available nodes for PSI task: partyA={}, partyB={}", participantNodeIds.get(0), participantNodeIds.get(1));
+        }
+
+        // 创建Ray集群
+        String clusterId = null;
+        try {
+            log.info("Creating Ray cluster for PSI task {}, participants: {}", taskName, participantNodeIds);
+            clusterId = rayClusterService.createCluster(taskName, participantNodeIds);
+            log.info("Ray cluster {} created successfully", clusterId);
+        } catch (Exception e) {
+            log.error("Failed to create Ray cluster for PSI task: {}", e.getMessage());
+            throw new RuntimeException("创建Ray集群失败: " + e.getMessage());
+        }
+
+        // 创建任务
+        String taskId = createTask(taskParams);
+
+        // 生成PSI代码并保存
+        String protocol = (String) params.getOrDefault("protocol", "ECPSI");
+        String resultType = params.get("resultType") != null ? (String) params.get("resultType") : "INTERSECTION";
+
+        // 获取集群Head地址
+        String headAddress = rayClusterService.getHeadAddress(clusterId);
+        if (headAddress == null) {
+            throw new RuntimeException("无法获取集群Head地址");
+        }
+
+        // 获取参与节点的Agent HTTP地址（用于SecretFlow集群配置）
+        // SecretFlow的cluster_config中parties需要各方的Agent地址（HTTP端口），而非Ray地址
+        String partyAAddress = null;
+        String partyBAddress = null;
+        if (participantNodeIds.size() >= 2) {
+            TbNode nodeA = nodeService.getNode(participantNodeIds.get(0));
+            TbNode nodeB = nodeService.getNode(participantNodeIds.get(1));
+            if (nodeA != null && nodeA.getfEndpoint() != null) {
+                partyAAddress = nodeA.getfEndpoint();
+            }
+            if (nodeB != null && nodeB.getfEndpoint() != null) {
+                partyBAddress = nodeB.getfEndpoint();
+            }
+        } else if (participantNodeIds.size() == 1) {
+            // 单节点情况：partyA和partyB都使用同一个节点（仅用于测试）
+            TbNode node = nodeService.getNode(participantNodeIds.get(0));
+            if (node != null && node.getfEndpoint() != null) {
+                partyAAddress = node.getfEndpoint();
+                partyBAddress = node.getfEndpoint();
+            }
+        }
+
+        // 使用代码生成器工厂生成代码
+        ICodeGenerator codeGenerator = codeGeneratorFactory.getGenerator("PSI");
+        Map<String, Object> codeParams = new HashMap<>();
+        codeParams.put("partyADataPath", partyADataPath);
+        codeParams.put("partyBDataPath", partyBDataPath);
+        codeParams.put("keyColumn", keyColumn);
+        codeParams.put("protocol", protocol);
+        codeParams.put("resultType", resultType);
+        codeParams.put("rayAddress", headAddress);
+        codeParams.put("partyAAddress", partyAAddress);
+        codeParams.put("partyBAddress", partyBAddress);
+        String pythonCode = codeGenerator.generateCode(taskId, codeParams);
+
+        // 更新任务的fCode字段
+        TbTask task = taskMapper.selectById(taskId);
+        if (task != null) {
+            task.setfCode(pythonCode);
+            task.setfUpdateTime(LocalDateTime.now());
+            taskMapper.updateById(task);
+            log.info("PSI task {} code generated and saved, code length: {}", taskId, pythonCode.length());
+        }
+
+        // 提交任务到多个节点
+        // PSI需要alice和bob两方都执行，每个节点执行相同的代码但根据sf.get_party()决定执行哪个分支
+        // Head节点作为alice，Worker节点作为bob
+        Map<String, String> jobIds = new HashMap<>();
+        try {
+            String clusterStatus = rayClusterService.getClusterStatus(clusterId);
+            if ("RUNNING".equals(clusterStatus) && !participantNodeIds.isEmpty()) {
+                // 更新任务状态为执行中
+                if (task != null) {
+                    task.setfStatus(3); // RUNNING
+                    taskMapper.updateById(task);
+                }
+
+                // 向每个参与节点提交任务
+                for (int i = 0; i < participantNodeIds.size(); i++) {
+                    String nodeId = participantNodeIds.get(i);
+                    TbNode node = nodeService.getNode(nodeId);
+                    if (node != null) {
+                        String nodeJobId = agentClient.submitJob(node.getfEndpoint(), pythonCode, taskId + "_node" + i);
+                        jobIds.put(nodeId, nodeJobId);
+                        log.info("PSI task {} submitted to node {}, jobId: {}", taskId, nodeId, nodeJobId);
+                    }
+                }
+
+                // 等待所有节点的任务完成
+                // 使用Head节点作为主查询节点
+                TbNode headNode = nodeService.getNode(participantNodeIds.get(0));
+                if (headNode != null && !jobIds.isEmpty()) {
+                    String mainJobId = jobIds.get(participantNodeIds.get(0));
+                    waitForJobCompletion(headNode.getfEndpoint(), mainJobId, taskId, task);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to submit PSI task to cluster: {}", e.getMessage());
+            // 不抛出异常，任务已创建，代码已保存，后续可以手动执行
+        }
+
+        return taskId;
+    }
+
+    /**
+     * 等待Ray Job完成并获取结果
+     */
+    private void waitForJobCompletion(String agentEndpoint, String jobId, String taskId, TbTask task) {
+        int maxRetries = 60; // 最多等待60次（约5分钟）
+        int retryInterval = 5000; // 5秒间隔
+
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                Thread.sleep(retryInterval);
+
+                IAgentClient.TaskStatus status = agentClient.getTaskStatus(agentEndpoint, jobId);
+                if (status == null) {
+                    log.warn("Task status query returned null for jobId: {}", jobId);
+                    continue;
+                }
+
+                String taskStatus = status.getStatus();
+                log.info("Job {} status: {}, attempt: {}/{}", jobId, taskStatus, i + 1, maxRetries);
+
+                if ("SUCCEEDED".equalsIgnoreCase(taskStatus)) {
+                    // 任务成功，更新结果
+                    if (task != null) {
+                        task.setfStatus(4); // COMPLETED
+                        task.setfResult(status.getResult());
+                        task.setfExecutionLog("Job succeeded\n" + status.getResult());
+                        task.setfUpdateTime(LocalDateTime.now());
+                        taskMapper.updateById(task);
+                    }
+                    log.info("PSI task {} completed successfully", taskId);
+                    return;
+
+                } else if ("FAILED".equalsIgnoreCase(taskStatus)) {
+                    // 任务失败
+                    if (task != null) {
+                        task.setfStatus(5); // FAILED
+                        task.setfResult("{\"status\":\"error\",\"message\":\"" + (status.getError() != null ? status.getError().replace("\"", "\\\"") : "Unknown error") + "\"}");
+                        task.setfExecutionLog("Job failed: " + status.getError());
+                        task.setfUpdateTime(LocalDateTime.now());
+                        taskMapper.updateById(task);
+                    }
+                    log.error("PSI task {} failed: {}", taskId, status.getError());
+                    return;
+
+                } else if ("STOPPED".equalsIgnoreCase(taskStatus)) {
+                    // 任务被停止
+                    if (task != null) {
+                        task.setfStatus(6); // CANCELLED
+                        task.setfExecutionLog("Job stopped by user");
+                        task.setfUpdateTime(LocalDateTime.now());
+                        taskMapper.updateById(task);
+                    }
+                    return;
+                }
+                // PENDING, RUNNING, SUBMITTED 继续等待
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Wait for job completion interrupted: {}", jobId);
+                return;
+            } catch (Exception e) {
+                log.error("Error waiting for job completion: {}", e.getMessage());
+                // 继续等待，不立即退出
+            }
+        }
+
+        // 超时
+        if (task != null) {
+            task.setfStatus(5); // FAILED
+            task.setfResult("{\"status\":\"error\",\"message\":\"Task execution timeout\"}");
+            task.setfExecutionLog("Job execution timeout after " + (maxRetries * retryInterval / 1000) + " seconds");
+            task.setfUpdateTime(LocalDateTime.now());
+            taskMapper.updateById(task);
+        }
+        log.error("PSI task {} wait timeout", taskId);
     }
 
     @Override
@@ -409,17 +699,17 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
 
     @Override
     public Map<String, Object> listNodes(int page, int size, Integer status) {
-        com.tds.dos.msp.common.enums.NodeStatus nodeStatus = null;
+        com.tds.dos.common.enums.NodeStatus nodeStatus = null;
         if (status != null && status > 0) {
-            nodeStatus = com.tds.dos.msp.common.enums.NodeStatus.fromCode(status);
+            nodeStatus = com.tds.dos.common.enums.NodeStatus.fromCode(status);
         }
-        com.tds.dos.msp.common.core.PageResult<com.tds.dos.msp.dal.entity.TbMspNode> pageResult =
+        com.tds.dos.common.core.PageResult<com.tds.dos.dal.msp.entity.TbNode> pageResult =
             nodeService.listNodes(page, size, nodeStatus);
 
         // 转换为前端期望的格式
         List<Map<String, Object>> list = new ArrayList<>();
         if (pageResult != null && pageResult.getList() != null) {
-            for (com.tds.dos.msp.dal.entity.TbMspNode node : pageResult.getList()) {
+            for (com.tds.dos.dal.msp.entity.TbNode node : pageResult.getList()) {
                 Map<String, Object> item = new HashMap<>();
                 item.put("nodeId", node.getfNodeId());
                 item.put("nodeName", node.getfNodeName());
@@ -472,6 +762,27 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
     public Map<String, Object> getDatasource(String datasourceId) {
         // 获取数据源信息 - 返回空实现
         return new HashMap<>();
+    }
+
+    /**
+     * 获取可用的节点列表（在线状态）
+     */
+    private List<String> getAvailableNodes() {
+        try {
+            Map<String, Object> nodeResult = listNodes(1, 100, 1); // status=1 表示在线
+            List<Map<String, Object>> nodeList = (List<Map<String, Object>>) nodeResult.get("list");
+            if (nodeList == null || nodeList.isEmpty()) {
+                return new ArrayList<>();
+            }
+            List<String> nodeIds = new ArrayList<>();
+            for (Map<String, Object> node : nodeList) {
+                nodeIds.add((String) node.get("nodeId"));
+            }
+            return nodeIds;
+        } catch (Exception e) {
+            log.error("Failed to get available nodes: {}", e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     /**

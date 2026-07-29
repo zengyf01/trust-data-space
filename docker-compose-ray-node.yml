@@ -1,0 +1,96 @@
+# ============================================================
+# RAY 计算节点 - Docker Compose 编排
+#
+# 启动命令：
+#   启动节点：    docker-compose -f docker-compose-ray-node.yml up -d
+#   查看日志：    docker-compose -f docker-compose-ray-node.yml logs -f ray-head
+#   停止节点：    docker-compose -f docker-compose-ray-node.yml down
+# ============================================================
+
+services:
+
+  # ============================================================
+  # RAY 计算节点 1
+  # ============================================================
+  ray-node-1:
+    build:
+      context: ./backend/ray-node
+      dockerfile: Dockerfile
+    container_name: ray-node-1
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ID: ray-node-001
+      NODE_NAME: RAY计算节点1
+      NODE_MODE: RAY
+      DOS_API_URL: http://dos-api:8080
+      DOS_API_EXTERNAL: http://localhost:8082
+      HEARTBEAT_INTERVAL: 30
+    ports:
+      - "9081:8081"
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ============================================================
+  # RAY 计算节点 2
+  # ============================================================
+  ray-node-2:
+    build:
+      context: ./backend/ray-node
+      dockerfile: Dockerfile
+    container_name: ray-node-2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ID: ray-node-002
+      NODE_NAME: RAY计算节点2
+      NODE_MODE: RAY
+      DOS_API_URL: http://dos-api:8080
+      DOS_API_EXTERNAL: http://localhost:8082
+      HEARTBEAT_INTERVAL: 30
+    ports:
+      - "9082:8081"
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ============================================================
+  # RAY 计算节点 3
+  # ============================================================
+  ray-node-3:
+    build:
+      context: ./backend/ray-node
+      dockerfile: Dockerfile
+    container_name: ray-node-3
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ID: ray-node-003
+      NODE_NAME: RAY计算节点3
+      NODE_MODE: RAY
+      DOS_API_URL: http://dos-api:8080
+      DOS_API_EXTERNAL: http://localhost:8082
+      HEARTBEAT_INTERVAL: 30
+    ports:
+      - "9083:8081"
+    networks:
+      - tds-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+# ============================================================
+# 网络
+# ============================================================
+networks:
+  tds-net:
+    external: true
+    name: tds-net
