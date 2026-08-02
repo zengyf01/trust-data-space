@@ -15,13 +15,16 @@ import time
 import logging
 import socket
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 
 # 配置日志
+# 配置日志 - 中文
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
+logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -65,26 +68,36 @@ def start_head():
         # 获取本机IP（容器内需要通过hostname -I 获取）
         host_ip = get_local_ip()
         if not host_ip:
+            logger.error('无法获取本机IP地址')
             return jsonify({'code': 500, 'data': None, 'msg': '无法获取本机IP'}), 200
 
         # 先停止可能存在的Ray进程
+        logger.info('正在停止可能存在的Ray进程...')
         subprocess.run(['ray', 'stop', '--force'], capture_output=True, timeout=30)
         time.sleep(1)
 
         # 启动Ray Head
+        # Ray 2.x: --port 设置 client_server 端口，--gcs-server-port 设置 gcs_server 端口
+        # worker_ports 不能与 gcs_server_port 和 client_server_port 冲突
+        gcs_server_port = ray_port
+        client_server_port = ray_port + 1  # 与 gcs_server_port 错开
+        # worker_port_start 从 ray_port + 2 开始，避免冲突
+        worker_port_start = ray_port + 2
         cmd = [
             'ray', 'start', '--head',
-            '--port', str(ray_port),
-            '--dashboard-port', str(dashboard_port),
+            '--port', str(client_server_port),
+            '--gcs-server-port', str(gcs_server_port),
             '--node-ip-address', host_ip,
+            '--min-worker-port', str(worker_port_start),
+            '--max-worker-port', '19999',
             '--disable-usage-stats'
         ]
 
-        logger.info(f"Starting Ray Head: {' '.join(cmd)}")
+        logger.info(f'启动Ray Head命令: {" ".join(cmd)}')
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if result.returncode != 0:
-            logger.error(f"Failed to start Ray Head: {result.stderr}")
+            logger.error(f'启动Ray Head失败: {result.stderr}')
             return jsonify({'code': 500, 'data': None, 'msg': f'启动Ray Head失败: {result.stderr}'}), 200
 
         # 等待Ray初始化
@@ -97,7 +110,7 @@ def start_head():
         state.is_head = True
         state.current_cluster_id = str(uuid.uuid4())
 
-        logger.info(f"Ray Head started successfully at {state.ray_head_address}")
+        logger.info(f'Ray Head启动成功，地址: {state.ray_head_address}')
 
         return jsonify({
             'code': 200,
@@ -126,6 +139,7 @@ def start_worker():
         ray_port = data.get('rayPort', 10001)
 
         if not head_address:
+            logger.error('Worker启动失败: headAddress不能为空')
             return jsonify({'code': 500, 'data': None, 'msg': 'headAddress不能为空'}), 200
 
         # 如果已有Ray进程在运行，先停止
@@ -133,19 +147,32 @@ def start_worker():
             stop_ray()
 
         # 先停止可能存在的Ray进程
+        logger.info('正在停止可能存在的Ray进程...')
         subprocess.run(['ray', 'stop', '--force'], capture_output=True, timeout=30)
         time.sleep(1)
 
         # 获取本机IP
         host_ip = get_local_ip()
         if not host_ip:
+            logger.error('无法获取本机IP地址')
             return jsonify({'code': 500, 'data': None, 'msg': '无法获取本机IP'}), 200
 
         # 启动Ray Worker
-        # head_address格式是 ray://172.168.1.1:6379，需要提取出 172.168.1.1:6379
+        # head_address格式是 ray://172.168.1.1:10001，需要转换为GCS端口 172.168.1.1:10002
+        # Ray 2.x 客户端端口=10001，GCS端口=10002，Worker需要连接GCS端口
         worker_address = head_address
         if worker_address.startswith('ray://'):
             worker_address = worker_address[6:]  # 跳过 ray:// 前缀
+            # Ray 2.x: 客户端端口是 GCS端口+1，改为直接连接 GCS 端口
+            parts = worker_address.rsplit(':', 1)
+            if len(parts) == 2:
+                try:
+                    client_port = int(parts[1])
+                    gcs_port = client_port + 1  # 10001 → 10002
+                    worker_address = f"{parts[0]}:{gcs_port}"
+                    logger.info(f'转换Worker连接地址: {head_address} → {worker_address} (GCS端口)')
+                except ValueError:
+                    pass  # 端口不是数字，保持原样
 
         cmd = [
             'ray', 'start', '--address', worker_address,
@@ -153,12 +180,23 @@ def start_worker():
             '--disable-usage-stats'
         ]
 
-        logger.info(f"Starting Ray Worker: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        logger.info(f'启动Ray Worker命令: {" ".join(cmd)}')
+        # 使用后台执行避免卡住，subprocess.run 会等待60s超时
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            stdout, stderr = proc.communicate(timeout=60)
+            result_returncode = proc.returncode
+            result_stdout = stdout.decode() if stdout else ''
+            result_stderr = stderr.decode() if stderr else ''
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            logger.error(f'启动Ray Worker超时，已kill进程')
+            return jsonify({'code': 500, 'data': None, 'msg': '启动Ray Worker超时'}), 200
 
-        if result.returncode != 0:
-            logger.error(f"Failed to start Ray Worker: {result.stderr}")
-            return jsonify({'code': 500, 'data': None, 'msg': f'启动Ray Worker失败: {result.stderr}'}), 200
+        if result_returncode != 0:
+            logger.error(f'启动Ray Worker失败: {result_stderr}')
+            return jsonify({'code': 500, 'data': None, 'msg': f'启动Ray Worker失败: {result_stderr}'}), 200
 
         # 等待Ray初始化
         time.sleep(3)
@@ -171,7 +209,7 @@ def start_worker():
         state.ray_address = worker_ray_address  # 保存Worker自己的地址
         state.is_head = False
 
-        logger.info(f"Ray Worker started successfully, joined cluster at {head_address}, worker address: {worker_ray_address}")
+        logger.info(f'Ray Worker启动成功，已加入集群: {head_address}，本节点地址: {worker_ray_address}')
 
         return jsonify({
             'code': 200,
@@ -233,6 +271,7 @@ def get_ray_status():
     """查询Ray状态"""
     try:
         running = is_ray_running()
+        logger.info(f'查询Ray状态: 运行中={running}, 集群ID={state.current_cluster_id}, Ray地址={state.ray_head_address}')
 
         return jsonify({
             'code': 200,
@@ -247,7 +286,7 @@ def get_ray_status():
         }), 200
 
     except Exception as e:
-        logger.error(f"Error getting Ray status: {e}")
+        logger.error(f'查询Ray状态失败: {e}')
         return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
 
 
@@ -262,9 +301,11 @@ def run_task():
         task_id = data.get('taskId')
 
         if not script:
+            logger.error('任务提交失败: script不能为空')
             return jsonify({'code': 500, 'data': None, 'msg': 'script不能为空'}), 200
 
         if not is_ray_running():
+            logger.error('任务提交失败: Ray未运行，请先启动Ray集群')
             return jsonify({'code': 500, 'data': None, 'msg': 'Ray未运行，请先启动Ray集群'}), 200
 
         # 生成job_id
@@ -279,7 +320,7 @@ def run_task():
         thread.daemon = True
         thread.start()
 
-        logger.info(f"Task submitted: jobId={job_id}, taskId={task_id}")
+        logger.info(f'任务已提交: jobId={job_id}, taskId={task_id}')
 
         return jsonify({
             'code': 200,
@@ -291,7 +332,7 @@ def run_task():
         }), 200
 
     except Exception as e:
-        logger.error(f"Error running task: {e}")
+        logger.error(f'任务提交失败: {e}')
         return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
 
 
@@ -302,8 +343,10 @@ def get_task_status(job_id):
         task_info = state.tasks.get(job_id)
 
         if task_info is None:
+            logger.warn(f'查询任务状态: 任务不存在 jobId={job_id}')
             return jsonify({'code': 404, 'data': None, 'msg': '任务不存在'}), 200
 
+        logger.info(f'任务状态查询: jobId={job_id}, status={task_info.status}')
         return jsonify({
             'code': 200,
             'data': {
@@ -318,7 +361,46 @@ def get_task_status(job_id):
         }), 200
 
     except Exception as e:
-        logger.error(f"Error getting task status: {e}")
+        logger.error(f'查询任务状态失败: {e}')
+        return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
+
+
+@app.route('/agent/task/file', methods=['GET'])
+def get_task_file():
+    """按 job_id + 路径下载任务输出文件。
+
+    任务脚本负责把输出路径回传到 DOS（通过 TDS_PSI_RESULT 摘要里的 outputPath），
+    DOS 再用本接口把容器内 /tmp 下的产物文件取回。
+    安全策略：仅允许 /tmp/ 下的普通文件，禁止 .. 路径穿越与符号链接外跳。
+    """
+    try:
+        job_id = request.args.get('jobId', '')
+        file_path = request.args.get('path', '')
+        if not job_id or not file_path:
+            return jsonify({'code': 400, 'data': None, 'msg': 'jobId 与 path 必填'}), 200
+
+        task_info = state.tasks.get(job_id)
+        if task_info is None:
+            return jsonify({'code': 404, 'data': None, 'msg': '任务不存在'}), 200
+        if task_info.status != 'SUCCEEDED':
+            return jsonify({'code': 409, 'data': None, 'msg': '任务未成功，当前状态: ' + task_info.status}), 200
+
+        # 路径安全检查
+        real_path = os.path.realpath(file_path)
+        if not real_path.startswith('/tmp/'):
+            return jsonify({'code': 403, 'data': None, 'msg': '仅允许访问 /tmp/ 下的文件'}), 200
+        if not os.path.isfile(real_path):
+            return jsonify({'code': 404, 'data': None, 'msg': '文件不存在: ' + file_path}), 200
+
+        with open(real_path, 'rb') as f:
+            content = f.read()
+        logger.info(f'文件下载: jobId={job_id}, path={file_path}, bytes={len(content)}')
+        # 直接返回字节流（不再包 JSON）。csv 是文本，按文本返回让 DOS 透传给上层。
+        return Response(content, mimetype='text/csv', headers={
+            'Content-Disposition': f'attachment; filename="{os.path.basename(real_path)}"'
+        })
+    except Exception as e:
+        logger.error(f'文件下载失败: {e}')
         return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
 
 
@@ -329,14 +411,16 @@ def stop_task(job_id):
         task_info = state.tasks.get(job_id)
 
         if task_info is None:
+            logger.warn(f'停止任务: 任务不存在 jobId={job_id}')
             return jsonify({'code': 404, 'data': None, 'msg': '任务不存在'}), 200
 
         if task_info.process is not None:
             task_info.process.terminate()
             task_info.status = 'STOPPED'
-            logger.info(f"Task {job_id} stopped by user")
+            logger.info(f'任务已停止: jobId={job_id}')
         else:
             task_info.status = 'STOPPED'
+            logger.info(f'任务已标记为停止: jobId={job_id}')
 
         return jsonify({
             'code': 200,
@@ -345,7 +429,7 @@ def stop_task(job_id):
         }), 200
 
     except Exception as e:
-        logger.error(f"Error stopping task: {e}")
+        logger.error(f'停止任务失败: {e}')
         return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
 
 
@@ -453,117 +537,114 @@ def execute_script(job_id, script, task_id):
     """在新线程中执行Python脚本 - 提交到Ray集群执行"""
     task_info = state.tasks.get(job_id)
     if task_info is None:
+        logger.error(f'执行脚本失败: 任务不存在 jobId={job_id}')
         return
 
     task_info.status = 'RUNNING'
+    logger.info(f'开始执行任务: jobId={job_id}, taskId={task_id}')
 
     # 1. 将脚本写入临时文件
     script_path = f'/tmp/ray_job_{job_id}.py'
     try:
         with open(script_path, 'w', encoding='utf-8') as f:
             f.write(script)
-        logger.info(f"Script written to {script_path}")
+        logger.info(f'脚本已写入: {script_path}')
     except Exception as e:
         task_info.status = 'FAILED'
-        task_info.error = f"Failed to write script: {e}"
-        logger.error(f"Task {job_id} failed to write script: {e}")
+        task_info.error = f'写入脚本失败: {e}'
+        logger.error(f'任务 {job_id} 写入脚本失败: {e}')
         return
 
     # 2. 检查Ray是否在运行
     if not is_ray_running():
         task_info.status = 'FAILED'
-        task_info.error = 'Ray is not running on this node'
-        logger.error(f"Task {job_id} failed: Ray not running")
+        task_info.error = 'Ray未运行，请先启动Ray集群'
+        logger.error(f'任务 {job_id} 执行失败: Ray未运行')
         return
 
     # 3. 获取Ray Head地址
     ray_address = state.ray_head_address
     if not ray_address:
         task_info.status = 'FAILED'
-        task_info.error = 'Ray head address not found'
-        logger.error(f"Task {job_id} failed: no Ray head address")
+        task_info.error = 'Ray Head地址未找到'
+        logger.error(f'任务 {job_id} 执行失败: Ray Head地址未找到')
         return
 
-    # 4. 使用 ray job submit 提交到Ray集群
-    # ray job submit --address {ray_address} -- python {script_path}
-    # 注意：ray_address 格式是 ray://host:port，需要转换为 host:port
-    ray_address_for_cli = ray_address
-    if ray_address_for_cli.startswith('ray://'):
-        ray_address_for_cli = ray_address_for_cli[6:]  # 去掉 ray:// 前缀
+    # 4. 直接以 Ray Driver 方式运行脚本（绕过 ray job submit 机制）
+    # 为什么不用 ray job submit：Ray Job 模式下，worker 的 Python 主线程由 Ray C++ 启动，
+    # 不是真正的 main thread，sf.init() → ray.init() 内部 SIGTERM 主线程检查会硬失败
+    # 以 Driver 方式运行时，Python 主线程就是真正的 main thread，SF/Ray 初始化正常
+    python_exe = sys.executable
 
-    cmd = [
-        'ray', 'job', 'submit',
-        '--address', ray_address_for_cli,
-        '--', 'python', script_path
-    ]
+    # 设置 Ray Driver 所需的环境变量
+    # 脚本内部会调用 sf.init(address='ray://...')，无需在此设置 RAY_ADDRESS
+    # 但保留一些 Ray 优化的环境变量
+    script_env = os.environ.copy()
+    script_env['PYTHONUNBUFFERED'] = '1'  # 实时输出，便于调试
+    script_env['RAY_DISABLE_DOCKER_CPU_WARNING'] = '1'
 
-    logger.info(f"Submitting job to Ray: {' '.join(cmd)}")
+    cmd = [python_exe, script_path]
+
+    logger.info(f'以Ray Driver方式运行: {" ".join(cmd)}')
+    logger.info(f'脚本路径: {script_path}')
 
     try:
-        result = subprocess.run(
+        # 用 Popen 而不是 run：把 process 对象存到 task_info.process，让 /agent/task/stop 真的能 terminate
+        # subprocess.run 内部会等结束，外部拿不到 Popen，stopJob 永远只能改 status 杀不掉进程
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5分钟超时
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=script_env,
+            cwd='/tmp'
         )
+        task_info.process = proc
+        logger.info(f'Python 进程已启动: jobId={job_id}, pid={proc.pid}')
 
-        # 解析提交结果
+        try:
+            stdout_bytes, stderr_bytes = proc.communicate(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout_bytes, stderr_bytes = proc.communicate()
+            task_info.status = 'FAILED'
+            task_info.error = '任务执行超时（>10 分钟），已强制 kill 进程'
+            logger.error(f'任务 {job_id} 执行超时，已 kill pid={proc.pid}')
+            return
+        # communicate() 后 process 已结束，清空引用
+        task_info.process = None
+        result = subprocess.CompletedProcess(cmd, proc.returncode, stdout_bytes, stderr_bytes)
+
         if result.returncode == 0:
-            # ray job submit 成功后会返回 job_id
-            submitted_job_id = result.stdout.strip()
-            task_info.result = f"Job submitted successfully: {submitted_job_id}"
-            logger.info(f"Task {job_id} submitted to Ray, job_id: {submitted_job_id}")
-
-            # 等待作业完成
-            wait_cmd = [
-                'ray', 'job', 'status',
-                '--address', ray_address_for_cli,
-                submitted_job_id
-            ]
-
-            # 轮询作业状态
-            for _ in range(60):  # 最多等60次（5分钟）
-                time.sleep(5)
-                status_result = subprocess.run(wait_cmd, capture_output=True, text=True)
-                if status_result.returncode == 0:
-                    status_output = status_result.stdout.strip().upper()
-                    logger.info(f"Job {submitted_job_id} status: {status_output}")
-
-                    if 'SUCCEEDED' in status_output or 'SUCCESS' in status_output:
-                        task_info.status = 'SUCCEEDED'
-                        # 获取作业日志
-                        logs_cmd = ['ray', 'job', 'logs', '--address', ray_address_for_cli, submitted_job_id]
-                        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
-                        task_info.result = logs_result.stdout if logs_result.returncode == 0 else result.stdout
-                        break
-                    elif 'FAILED' in status_output or 'ERROR' in status_output:
-                        task_info.status = 'FAILED'
-                        task_info.error = f"Ray job failed: {status_output}"
-                        # 获取错误日志
-                        logs_cmd = ['ray', 'job', 'logs', '--address', ray_address_for_cli, submitted_job_id]
-                        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
-                        task_info.error += f"\nLogs: {logs_result.stderr}"
-                        break
-                time.sleep(1)
-            else:
-                # 超时
-                task_info.status = 'FAILED'
-                task_info.error = 'Job execution timeout (5 minutes)'
-                logger.error(f"Task {job_id} timeout")
-
+            task_info.status = 'SUCCEEDED'
+            # 取 stdout 最后部分作为结果（避免过长）
+            stdout_text = result.stdout.decode('utf-8', errors='replace') if result.stdout else ''
+            task_info.result = stdout_text[-5000:] if stdout_text else '(无输出)'
+            logger.info(f'任务 {job_id} 执行成功')
+            logger.info(f'任务 {job_id} 输出尾部: {task_info.result[-200:]}')
         else:
             task_info.status = 'FAILED'
-            task_info.error = f"Job submission failed: {result.stderr}"
-            logger.error(f"Task {job_id} submission failed: {result.stderr}")
+            # 完整记录 stdout 和 stderr，便于诊断
+            stdout_text = result.stdout.decode('utf-8', errors='replace') if result.stdout else ''
+            stderr_text = result.stderr.decode('utf-8', errors='replace') if result.stderr else ''
+            stdout_tail = stdout_text[-2000:] if stdout_text else '(空)'
+            stderr_tail = stderr_text[-2000:] if stderr_text else '(空)'
+            task_info.error = (
+                f'任务执行失败 [returncode={result.returncode}]\n'
+                f'--- stdout (尾 2000 字符) ---\n{stdout_tail}\n'
+                f'--- stderr (尾 2000 字符) ---\n{stderr_tail}'
+            )
+            logger.error(f'任务 {job_id} 执行失败: returncode={result.returncode}')
+            logger.error(f'stderr: {stderr_tail}')
+            logger.error(f'stdout: {stdout_tail}')
 
     except subprocess.TimeoutExpired:
         task_info.status = 'FAILED'
-        task_info.error = 'Job submission timeout'
-        logger.error(f"Task {job_id} submission timeout")
+        task_info.error = '任务提交超时'
+        logger.error(f'任务 {job_id} 提交超时')
     except Exception as e:
         task_info.status = 'FAILED'
         task_info.error = str(e)
-        logger.error(f"Task {job_id} error: {e}")
+        logger.error(f'任务 {job_id} 执行异常: {e}')
     finally:
         # 清理临时文件
         try:

@@ -107,6 +107,13 @@
                 <span v-if="!parsedResult.sample_result || parsedResult.sample_result.length === 0">无</span>
               </a-descriptions-item>
               <a-descriptions-item label="执行消息" :span="2">{{ parsedResult.message || '-' }}</a-descriptions-item>
+              <a-descriptions-item label="结果下载" :span="2">
+                <a-button type="primary" @click="handleDownloadResult('alice')" v-if="parsedResult.output_path?.alice">
+                  <template #icon><DownloadOutlined /></template>
+                  下载结果
+                </a-button>
+                <a-tag v-else-if="!parsedResult.output_path?.alice" color="warning">无可用结果</a-tag>
+              </a-descriptions-item>
             </a-descriptions>
           </template>
           <a-result v-else-if="currentTask.status === 5" status="error" title="任务执行失败" :subTitle="parsedResult?.message || '任务执行失败'" />
@@ -142,7 +149,7 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { CopyOutlined } from '@ant-design/icons-vue'
+import { CopyOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import axios from 'axios'
 
 const router = useRouter()
@@ -173,13 +180,19 @@ const taskPagination = ref({
 const parsedResult = computed(() => {
   if (!currentTaskResult.value) return null
   try {
-    let result
-    if (typeof currentTaskResult.value === 'string') {
-      result = JSON.parse(currentTaskResult.value)
-    } else {
-      result = currentTaskResult.value
+    // currentTaskResult 可能是 API 返回的 {taskId, result} 或直接的 result 字符串
+    let data = currentTaskResult.value
+    if (typeof data === 'string') {
+      data = JSON.parse(data)
     }
-    return result
+    // 如果是 {taskId, result} 结构，需要取 result 字段
+    if (data.result) {
+      if (typeof data.result === 'string') {
+        return JSON.parse(data.result)
+      }
+      return data.result
+    }
+    return data
   } catch {
     return null
   }
@@ -389,6 +402,29 @@ const handleGetTaskResult = async (record) => {
     taskDetailVisible.value = true
   } catch (error) {
     message.error('获取结果失败: ' + (error.message || '未知错误'))
+  }
+}
+
+// 下载PSI结果文件
+const handleDownloadResult = async (party) => {
+  if (!currentTask.value) return
+  try {
+    const response = await axios.get(`/api/dos/privacy/psi/${currentTask.value.taskId}/result`, {
+      params: { party },
+      responseType: 'blob'
+    })
+    const blob = new Blob([response.data], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `psi_result_${currentTask.value.taskId}_${party}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    message.success('下载成功')
+  } catch (error) {
+    message.error('下载失败: ' + (error.message || '未知错误'))
   }
 }
 

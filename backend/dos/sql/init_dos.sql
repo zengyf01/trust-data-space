@@ -1,6 +1,11 @@
 -- 可信数据空间 交付平台(DOS) 数据库初始化脚本
 -- 数据库: dos (包含MSP密算平台表)
 
+-- 允许 root 从任意地址访问（Docker容器网络）
+CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+
 CREATE DATABASE IF NOT EXISTS dos DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE dos;

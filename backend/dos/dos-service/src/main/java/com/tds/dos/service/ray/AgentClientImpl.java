@@ -45,6 +45,10 @@ public class AgentClientImpl implements IAgentClient {
             if (response.statusCode() == 200) {
                 Map<String, Object> resp = objectMapper.readValue(response.body(), Map.class);
                 Map<String, Object> data = (Map<String, Object>) resp.get("data");
+                if (data == null) {
+                    log.error("Agent {}/agent/ray/start-head returned null data. Response: {}", agentEndpoint, response.body());
+                    throw new RuntimeException("Agent returned null data. Is the Agent service running? Response: " + response.body());
+                }
                 String rayAddress = (String) data.get("rayAddress");
                 log.info("Started Ray Head at {}, agent: {}", rayAddress, agentEndpoint);
                 return rayAddress;
@@ -72,6 +76,10 @@ public class AgentClientImpl implements IAgentClient {
             if (response.statusCode() == 200) {
                 Map<String, Object> resp = objectMapper.readValue(response.body(), Map.class);
                 Map<String, Object> data = (Map<String, Object>) resp.get("data");
+                if (data == null) {
+                    log.error("Agent {}/agent/ray/start-worker returned null data. Response: {}", agentEndpoint, response.body());
+                    return null;
+                }
                 String workerRayAddress = (String) data.get("rayAddress");
                 log.info("Worker joined cluster at {}, agent: {}, worker ray address: {}", headAddress, agentEndpoint, workerRayAddress);
                 return workerRayAddress;
@@ -121,11 +129,20 @@ public class AgentClientImpl implements IAgentClient {
 
             if (response.statusCode() == 200) {
                 Map<String, Object> resp = objectMapper.readValue(response.body(), Map.class);
+                if (!isBusinessSuccess(resp)) {
+                    log.error("Agent {}/agent/ray/status returned business error. Response: {}", agentEndpoint, response.body());
+                    return null;
+                }
                 Map<String, Object> data = (Map<String, Object>) resp.get("data");
+                if (data == null) {
+                    log.error("Agent {}/agent/ray/status returned null data. Response: {}", agentEndpoint, response.body());
+                    return null;
+                }
                 RayStatus status = new RayStatus();
                 status.setRunning((Boolean) data.getOrDefault("running", false));
                 status.setClusterId((String) data.get("clusterId"));
                 status.setRayAddress((String) data.get("rayAddress"));
+                status.setNodeIp((String) data.get("nodeIp"));
                 return status;
             } else {
                 log.error("Failed to get Ray status from {}, status: {}", agentEndpoint, response.statusCode());
@@ -149,7 +166,15 @@ public class AgentClientImpl implements IAgentClient {
             HttpResponse<String> response = doPost(url, body);
             if (response.statusCode() == 200) {
                 Map<String, Object> resp = objectMapper.readValue(response.body(), Map.class);
+                if (!isBusinessSuccess(resp)) {
+                    log.error("Agent {}/agent/task/run returned business error. Response: {}", agentEndpoint, response.body());
+                    throw new RuntimeException("Agent拒绝任务提交: " + resp.get("msg"));
+                }
                 Map<String, Object> data = (Map<String, Object>) resp.get("data");
+                if (data == null) {
+                    log.error("Agent {}/agent/task/run returned null data. Response: {}", agentEndpoint, response.body());
+                    throw new RuntimeException("Agent returned null data. Response: " + response.body());
+                }
                 String jobId = (String) data.get("jobId");
                 log.info("Submitted job {} to {}, jobId: {}", taskId, agentEndpoint, jobId);
                 return jobId;
@@ -181,6 +206,10 @@ public class AgentClientImpl implements IAgentClient {
             if (response.statusCode() == 200) {
                 Map<String, Object> resp = objectMapper.readValue(response.body(), Map.class);
                 Map<String, Object> data = (Map<String, Object>) resp.get("data");
+                if (data == null) {
+                    log.error("Agent {}/agent/task/status/{} returned null data. Response: {}", agentEndpoint, jobId, response.body());
+                    return null;
+                }
                 TaskStatus status = new TaskStatus();
                 status.setStatus((String) data.get("status"));
                 status.setResult((String) data.get("result"));
@@ -214,6 +243,49 @@ public class AgentClientImpl implements IAgentClient {
             log.error("Error stopping job {} at {}: {}", jobId, agentEndpoint, e.getMessage());
             return false;
         }
+    }
+
+    @Override
+    public byte[] downloadTaskFile(String agentEndpoint, String jobId, String filePath) {
+        try {
+            String encodedJob = java.net.URLEncoder.encode(jobId, java.nio.charset.StandardCharsets.UTF_8);
+            String encodedPath = java.net.URLEncoder.encode(filePath, java.nio.charset.StandardCharsets.UTF_8);
+            String url = agentEndpoint + "/agent/task/file?jobId=" + encodedJob + "&path=" + encodedPath;
+
+            HttpResponse<byte[]> response = httpClient.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .GET()
+                    .timeout(Duration.ofMillis(timeout))
+                    .build(),
+                HttpResponse.BodyHandlers.ofByteArray()
+            );
+
+            if (response.statusCode() != 200) {
+                String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
+                log.error("下载任务文件失败: agent={}, jobId={}, status={}, body={}", agentEndpoint, jobId, response.statusCode(), body);
+                throw new RuntimeException("Agent 拒绝下载: HTTP " + response.statusCode() + " - " + body);
+            }
+            // Agent 业务失败时也返 200，但 Content-Type 是 application/json；正常文件是 text/csv
+            String contentType = response.headers().firstValue("Content-Type").orElse("");
+            if (contentType.contains("application/json")) {
+                String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
+                throw new RuntimeException("Agent 拒绝下载: " + body);
+            }
+            log.info("下载任务文件成功: agent={}, jobId={}, path={}, bytes={}", agentEndpoint, jobId, filePath, response.body().length);
+            return response.body();
+        } catch (Exception e) {
+            log.error("Error downloading task file {} from {}: {}", filePath, agentEndpoint, e.getMessage());
+            throw new RuntimeException("下载任务文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Agent业务失败时同样返回HTTP 200，需要检查响应体里的code
+     */
+    private boolean isBusinessSuccess(Map<String, Object> resp) {
+        Object code = resp.get("code");
+        return code instanceof Number && ((Number) code).intValue() == 200;
     }
 
     private HttpResponse<String> doPost(String url, Map<String, Object> body) throws Exception {

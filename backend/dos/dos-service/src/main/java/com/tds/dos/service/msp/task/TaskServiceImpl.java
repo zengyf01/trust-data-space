@@ -163,6 +163,21 @@ public class TaskServiceImpl implements ITaskService {
                     taskForAsync.setfUpdateTime(LocalDateTime.now());
                     taskMapper.updateById(taskForAsync);
                     log.info("Task {} completed successfully", taskIdForAsync);
+                } else if ("cancelled".equals(status)) {
+                    // 任务被取消：用 taskForAsync 缓存的 f_status 是 cancel 之前的（RUNNING），
+                    // 若直接 updateById 会把 cancel 端点设的 CANCELLED(6) 覆盖回 RUNNING(3)。
+                    // 这里只更新 result 与 update_time，f_status 用 DB 当前值。
+                    TbTask fresh = taskMapper.selectById(taskIdForAsync);
+                    if (fresh != null) {
+                        fresh.setfResult(result);
+                        fresh.setfUpdateTime(LocalDateTime.now());
+                        taskMapper.updateById(fresh);
+                    } else {
+                        taskForAsync.setfResult(result);
+                        taskForAsync.setfUpdateTime(LocalDateTime.now());
+                        taskMapper.updateById(taskForAsync);
+                    }
+                    log.warn("Task {} was cancelled: {}", taskIdForAsync, resultMap.get("message"));
                 } else {
                     // 更新任务状态为失败
                     taskForAsync.setfStatus(TaskStatus.FAILED.getCode());

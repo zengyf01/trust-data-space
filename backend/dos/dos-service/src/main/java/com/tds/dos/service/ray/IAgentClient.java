@@ -62,12 +62,23 @@ public interface IAgentClient {
     boolean stopJob(String agentEndpoint, String jobId);
 
     /**
+     * 下载任务输出文件
+     * @param agentEndpoint Agent HTTP地址
+     * @param jobId 任务ID（仅用于 Agent 鉴权 SUCCEEDED 状态）
+     * @param filePath 容器内文件绝对路径
+     * @return 文件字节内容
+     */
+    byte[] downloadTaskFile(String agentEndpoint, String jobId, String filePath);
+
+    /**
      * Ray状态信息
      */
     class RayStatus {
         private boolean running;
         private String clusterId;
         private String rayAddress;
+        /** 节点容器的真实IP，用于节点间SecretFlow通信。不要从rayAddress解析，那可能是过期地址 */
+        private String nodeIp;
 
         public boolean isRunning() { return running; }
         public void setRunning(boolean running) { this.running = running; }
@@ -75,6 +86,8 @@ public interface IAgentClient {
         public void setClusterId(String clusterId) { this.clusterId = clusterId; }
         public String getRayAddress() { return rayAddress; }
         public void setRayAddress(String rayAddress) { this.rayAddress = rayAddress; }
+        public String getNodeIp() { return nodeIp; }
+        public void setNodeIp(String nodeIp) { this.nodeIp = nodeIp; }
     }
 
     /**

@@ -6,7 +6,7 @@ CREATE DATABASE IF NOT EXISTS msp DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_
 USE msp;
 
 -- MSP任务表
-CREATE TABLE IF NOT EXISTS `tb_msp_task` (
+CREATE TABLE IF NOT EXISTS `tb_task` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_task_code` VARCHAR(64) DEFAULT NULL COMMENT '任务编号',
   `f_name` VARCHAR(128) NOT NULL COMMENT '任务名称',
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_task` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP任务表';
 
 -- MSP节点表
-CREATE TABLE IF NOT EXISTS `tb_msp_node` (
+CREATE TABLE IF NOT EXISTS `tb_node` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_node_id` VARCHAR(64) NOT NULL COMMENT '节点ID',
   `f_node_name` VARCHAR(128) NOT NULL COMMENT '节点名称',
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS `tb_ray_cluster` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Ray集群表';
 
 -- MSP数据源表
-CREATE TABLE IF NOT EXISTS `tb_msp_datasource` (
+CREATE TABLE IF NOT EXISTS `tb_datasource` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_datasource_id` VARCHAR(64) NOT NULL COMMENT '数据源ID',
   `f_node_id` VARCHAR(64) DEFAULT NULL COMMENT '所属节点ID',
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_datasource` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP数据源表';
 
 -- MSP用户表
-CREATE TABLE IF NOT EXISTS `tb_msp_user` (
+CREATE TABLE IF NOT EXISTS `tb_user` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_user_id` VARCHAR(64) NOT NULL COMMENT '用户ID',
   `f_username` VARCHAR(64) NOT NULL COMMENT '用户名',
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_user` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP用户表';
 
 -- MSP角色表
-CREATE TABLE IF NOT EXISTS `tb_msp_role` (
+CREATE TABLE IF NOT EXISTS `tb_role` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_role_id` VARCHAR(64) NOT NULL COMMENT '角色ID',
   `f_role_name` VARCHAR(64) NOT NULL COMMENT '角色名称',
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_role` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP角色表';
 
 -- MSP权限表
-CREATE TABLE IF NOT EXISTS `tb_msp_permission` (
+CREATE TABLE IF NOT EXISTS `tb_permission` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_permission_id` VARCHAR(64) NOT NULL COMMENT '权限ID',
   `f_permission_name` VARCHAR(64) NOT NULL COMMENT '权限名称',
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_permission` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP权限表';
 
 -- MSP审计日志表
-CREATE TABLE IF NOT EXISTS `tb_msp_audit_log` (
+CREATE TABLE IF NOT EXISTS `tb_audit_log` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_user_id` VARCHAR(64) DEFAULT NULL COMMENT '操作用户ID',
   `f_operation` VARCHAR(64) NOT NULL COMMENT '操作类型',
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_audit_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP审计日志表';
 
 -- MSP告警配置表
-CREATE TABLE IF NOT EXISTS `tb_msp_alert` (
+CREATE TABLE IF NOT EXISTS `tb_alert` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_alert_id` VARCHAR(64) NOT NULL COMMENT '告警ID',
   `f_alert_name` VARCHAR(128) NOT NULL COMMENT '告警名称',
@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS `tb_msp_alert` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MSP告警配置表';
 
 -- MSP系统配置表
-CREATE TABLE IF NOT EXISTS `tb_msp_system_config` (
+CREATE TABLE IF NOT EXISTS `tb_system_config` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_config_key` VARCHAR(128) NOT NULL COMMENT '配置键',
   `f_config_value` VARCHAR(512) DEFAULT NULL COMMENT '配置值',

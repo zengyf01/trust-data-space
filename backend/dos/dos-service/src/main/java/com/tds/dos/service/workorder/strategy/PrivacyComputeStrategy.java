@@ -3,9 +3,6 @@ package com.tds.dos.service.workorder.strategy;
 import com.tds.dos.common.enums.WorkOrderStatus;
 import com.tds.dos.dal.entity.TbWorkOrder;
 import com.tds.dos.dal.mapper.TbWorkOrderMapper;
-import com.tds.dos.dal.msp.entity.TbNode;
-import com.tds.dos.dal.msp.entity.TbTask;
-import com.tds.dos.dal.msp.mapper.TbTaskMapper;
 import com.tds.dos.common.core.ApiResponse;
 import com.tds.dos.common.enums.NodeStatus;
 import com.tds.dos.common.enums.TaskStatus;
@@ -13,8 +10,6 @@ import com.tds.dos.common.enums.TaskType;
 import com.tds.dos.service.msp.node.INodeService;
 import com.tds.dos.service.msp.task.ITaskService;
 import com.tds.dos.service.msp.task.TaskDTO;
-import com.tds.dos.service.psi.IPsiCodeGenerator;
-import com.tds.dos.service.ray.IAgentClient;
 import com.tds.dos.service.ray.IRayClusterService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -43,22 +38,15 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
     private INodeService nodeService;
 
     @Autowired
-    private IPsiCodeGenerator psiCodeGenerator;
-
-    @Autowired
-    private TbTaskMapper taskMapper;
-
-    @Autowired
     private IRayClusterService rayClusterService;
-
-    @Autowired
-    private IAgentClient agentClient;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public String getWorkOrderType() {
-        return "PRIVACY_COMPUTE";
+        // WorkOrderStrategyFactory 按该值作为 map key 注册策略；工单的 f_work_order_type 存的是数字
+        // （见 com.tds.dos.common.enums.WorkOrderType.PRIVACY_COMPUTE=3），必须返回数字字符串才能被找到。
+        return "3";
     }
 
     @Override
@@ -86,13 +74,14 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
                 participantNodeIds = list;
             }
 
-            // 如果有参与节点，动态创建Ray集群
-            if (participantNodeIds != null && !participantNodeIds.isEmpty()) {
+            // 如果有参与节点且不是PSI任务（PSI统一由 PsiTaskExecutor 创建集群）
+            boolean isPsi = "PSI".equalsIgnoreCase(computeType);
+            if (participantNodeIds != null && !participantNodeIds.isEmpty() && !isPsi) {
                 log.info("Creating Ray cluster for task {}, participants: {}", taskName, participantNodeIds);
                 clusterId = rayClusterService.createCluster(taskName, participantNodeIds);
                 log.info("Ray cluster {} created successfully", clusterId);
             } else {
-                log.warn("No participants specified for task {}, will use default ray address", taskName);
+                log.warn("No participants specified for task {} (or PSI type), will rely on task executor to manage cluster", taskName);
             }
 
             // 构建MSP任务DTO
@@ -134,6 +123,19 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
             if (params.get("partyBDataPath") != null) {
                 taskParams.put("partyBDataPath", String.valueOf(params.get("partyBDataPath")));
             }
+            if (params.get("keyColumn") != null) {
+                taskParams.put("keyColumn", String.valueOf(params.get("keyColumn")));
+            }
+            if (params.get("protocol") != null) {
+                taskParams.put("protocol", String.valueOf(params.get("protocol")));
+            }
+            if (params.get("resultType") != null) {
+                taskParams.put("resultType", String.valueOf(params.get("resultType")));
+            }
+            if (isPsi && participantNodeIds != null && participantNodeIds.size() >= 2) {
+                taskParams.put("partyANodeId", participantNodeIds.get(0));
+                taskParams.put("partyBNodeId", participantNodeIds.get(1));
+            }
             if (params.get("labelColumn") != null) {
                 taskParams.put("labelColumn", String.valueOf(params.get("labelColumn")));
             }
@@ -145,9 +147,15 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
             // 创建MSP任务
             String taskId = taskService.createTask(taskDTO);
 
-            // 如果是PSI任务，生成PSI执行脚本并提交到Ray集群
-            if (taskType == TaskType.PSI && clusterId != null) {
-                submitPsiTaskToCluster(taskId, clusterId, params);
+            // PSI 任务不再自行建集群/提交，统一由 PsiTaskExecutor 接管
+            // FL/VERTICAL_FL 暂未实现：FlCodeGenerator 用的 SecretFlow API（FLModel/SecureAggregator）
+            // 没有实测验证，且 FlTaskExecutor 是 fire-and-forget 假成功。
+            // 这里直接抛错，让工单在 preProcess 阶段快速失败。
+            if (taskType == TaskType.FEDERATED_LEARNING || taskType == TaskType.VERTICAL_FL) {
+                if (clusterId != null) {
+                    try { rayClusterService.destroyCluster(clusterId); } catch (Exception ignore) {}
+                }
+                throw new RuntimeException("联邦学习 / 纵向联邦学习暂未实现（FlTaskExecutor 是 stub 且 FlCodeGenerator 已删除）。请改用 PSI 求交（computeType=PSI）。");
             }
 
             // 保存任务ID和集群ID到工单结果
@@ -308,94 +316,4 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
         }
     }
 
-    /**
-     * 提交PSI任务到Ray集群
-     */
-    private void submitPsiTaskToCluster(String taskId, String clusterId, Map<String, Object> params) {
-        try {
-            // 获取集群Head地址
-            String headAddress = rayClusterService.getHeadAddress(clusterId);
-            if (headAddress == null) {
-                throw new RuntimeException("无法获取集群Head地址，clusterId: " + clusterId);
-            }
-
-            // 获取参与节点信息来确定PartyA和PartyB的地址
-            Object participantsObj = params.get("participants");
-            List<String> participantNodeIds = null;
-            if (participantsObj instanceof java.util.List) {
-                @SuppressWarnings("unchecked")
-                List<String> list = (java.util.List<String>) participantsObj;
-                participantNodeIds = list;
-            }
-
-            // Party地址使用Head地址（简化处理，实际多节点时需要区分）
-            String partyAAddress = headAddress;
-            String partyBAddress = headAddress;
-
-            // 如果有多个参与节点，根据节点角色分配地址
-            if (participantNodeIds != null && participantNodeIds.size() >= 2) {
-                TbNode nodeA = nodeService.getNode(participantNodeIds.get(0));
-                TbNode nodeB = nodeService.getNode(participantNodeIds.get(1));
-                if (nodeA != null && nodeA.getfRayEndpoint() != null) {
-                    partyAAddress = nodeA.getfRayEndpoint();
-                }
-                if (nodeB != null && nodeB.getfRayEndpoint() != null) {
-                    partyBAddress = nodeB.getfRayEndpoint();
-                }
-            }
-
-            String partyADataPath = params.get("partyADataPath") != null
-                ? String.valueOf(params.get("partyADataPath")) : "/tmp/party_a.csv";
-            String partyBDataPath = params.get("partyBDataPath") != null
-                ? String.valueOf(params.get("partyBDataPath")) : "/tmp/party_b.csv";
-            String keyColumn = params.get("keyColumn") != null
-                ? String.valueOf(params.get("keyColumn")) : "id";
-            String protocol = params.get("protocol") != null
-                ? String.valueOf(params.get("protocol")) : "ECPSI";
-            String resultType = params.get("resultType") != null
-                ? String.valueOf(params.get("resultType")) : "INTERSECTION";
-
-            // 生成PSI代码
-            String pythonCode = psiCodeGenerator.generatePsiCode(
-                taskId, partyADataPath, partyBDataPath,
-                keyColumn, protocol, resultType, "A",
-                headAddress, partyAAddress, partyBAddress
-            );
-
-            // 更新任务的fCode字段
-            TbTask task = taskMapper.selectById(taskId);
-            if (task != null) {
-                task.setfCode(pythonCode);
-                task.setfUpdateTime(LocalDateTime.now());
-                taskMapper.updateById(task);
-            }
-
-            // 获取Head节点作为任务提交节点
-            String clusterStatus = rayClusterService.getClusterStatus(clusterId);
-            if ("RUNNING".equals(clusterStatus)) {
-                // 向Head节点提交任务
-                TbNode headNode = nodeService.getNode(
-                    rayClusterService.getNodeClusterId(participantNodeIds.get(0)) != null
-                        ? participantNodeIds.get(0) : null
-                );
-                if (headNode != null) {
-                    String jobId = agentClient.submitJob(headNode.getfEndpoint(), pythonCode, taskId);
-                    log.info("PSI task {} submitted to cluster {}, jobId: {}", taskId, clusterId, jobId);
-
-                    // 更新任务状态
-                    if (task != null) {
-                        task.setfStatus(3); // 执行中
-                        taskMapper.updateById(task);
-                    }
-                }
-            }
-
-            log.info("PSI task {} code generated and submitted, cluster: {}, code length: {}",
-                taskId, clusterId, pythonCode.length());
-
-        } catch (Exception e) {
-            log.error("Failed to submit PSI task {} to cluster {}: {}", taskId, clusterId, e.getMessage());
-            // 不抛出异常，避免影响工单创建流程
-        }
-    }
 }

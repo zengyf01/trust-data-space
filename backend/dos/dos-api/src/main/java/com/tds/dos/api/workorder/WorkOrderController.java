@@ -69,6 +69,18 @@ public class WorkOrderController {
         return ApiResponse.success(workOrder);
     }
 
+    /**
+     * 按工单类型调度到对应策略执行：preProcess（建任务等） + execute（运行+等待）。
+     * 注意：该方法会同步阻塞直到策略完成，PSI 等长任务期间 HTTP 一直挂起，
+     * 如需异步返回应改用 workOrderService.executeWithStrategyAsync(id)。
+     */
+    @PostMapping("/{id}/execute")
+    public ApiResponse<?> executeWithStrategy(@PathVariable String id) {
+        workOrderService.executeWithStrategy(id);
+        TbWorkOrder workOrder = workOrderService.getWorkOrderById(id);
+        return ApiResponse.success(workOrder);
+    }
+
     @PostMapping("/{id}/complete")
     public ApiResponse<TbWorkOrder> completeWorkOrder(
             @PathVariable String id,

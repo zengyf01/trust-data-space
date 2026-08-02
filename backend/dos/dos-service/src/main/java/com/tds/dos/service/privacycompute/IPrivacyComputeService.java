@@ -72,6 +72,14 @@ public interface IPrivacyComputeService {
      */
     Map<String, Object> listTasks(int page, int size);
 
+    /**
+     * 下载 PSI 任务一方的结果 CSV（容器内 /tmp/psi_result_{taskId}_{party}.csv）
+     * @param taskId PSI 任务 ID
+     * @param party  alice 或 bob
+     * @return CSV 字节内容；任务未完成或文件不存在时抛异常
+     */
+    byte[] downloadPsiResultFile(String taskId, String party);
+
     // ==================== PSI 求交 ====================
 
     /**
@@ -92,12 +100,13 @@ public interface IPrivacyComputeService {
      * @param partyADataPath A方数据路径
      * @param partyBDataPath B方数据路径
      * @param keyColumn 关联键列
+     * @param params 额外参数（应包含 partyANodeId/partyBNodeId，避免按在线节点顺序回退）
      * @param timeoutSeconds 超时秒数
      * @return 求交结果
      */
     Map<String, Object> executePsiTaskWithResult(String taskName, String partyADataPath,
                                                   String partyBDataPath, String keyColumn,
-                                                  int timeoutSeconds);
+                                                  Map<String, Object> params, int timeoutSeconds);
 
     // ==================== MPC 多方计算 ====================
 

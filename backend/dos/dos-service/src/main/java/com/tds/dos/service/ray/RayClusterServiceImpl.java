@@ -110,15 +110,21 @@ public class RayClusterServiceImpl implements IRayClusterService {
             TbNode workerNode = nodes.get(i);
             int workerPort = workerNode.getfRayPort() != null ? workerNode.getfRayPort() : 6379;
 
+            log.info("Starting worker {} on node {}, head={}", i, workerNode.getfNodeId(), headAddress);
             String workerRayAddress = agentClient.startWorker(workerNode.getfEndpoint(), headAddress, workerPort);
             if (workerRayAddress != null) {
                 workerNode.setfRayStatus("RUNNING");
                 workerNode.setfRayEndpoint(workerRayAddress);  // 使用Worker自己的Ray地址
                 workerNode.setfUpdateTime(LocalDateTime.now());
                 nodeMapper.updateById(workerNode);
+                log.info("Worker {} started successfully, ray address: {}", workerNode.getfNodeId(), workerRayAddress);
             } else {
-                log.warn("Failed to start Worker on node {}, cluster {} may be incomplete",
-                    workerNode.getfNodeId(), clusterId);
+                log.error("Failed to start Worker on node {}, cluster {} is incomplete!", workerNode.getfNodeId(), clusterId);
+                // 更新集群状态为不完整
+                cluster.setfStatus("PARTIAL");
+                cluster.setfUpdateTime(LocalDateTime.now());
+                clusterMapper.updateById(cluster);
+                throw new RuntimeException("Failed to start Worker on node " + workerNode.getfNodeId() + ". Cluster " + clusterId + " is incomplete.");
             }
         }
 

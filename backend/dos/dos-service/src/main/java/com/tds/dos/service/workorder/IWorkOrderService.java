@@ -29,6 +29,11 @@ public interface IWorkOrderService {
     TbWorkOrder startProcess(String id);
 
     /**
+     * 按工单类型调度到对应策略执行（同步阻塞到策略完成）
+     */
+    void executeWithStrategy(String id);
+
+    /**
      * 完成工单
      */
     TbWorkOrder completeWorkOrder(String id, String resultMessage, String outputFilePath, String outputFileUrl);

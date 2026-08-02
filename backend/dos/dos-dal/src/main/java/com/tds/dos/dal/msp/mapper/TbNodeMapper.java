@@ -17,6 +17,6 @@ public interface TbNodeMapper extends BaseMapper<TbNode> {
     /**
      * 物理删除节点（忽略软删除）
      */
-    @Update("DELETE FROM tb_msp_node WHERE f_node_id = #{nodeId}")
+    @Update("DELETE FROM tb_node WHERE f_node_id = #{nodeId}")
     int physicalDeleteByNodeId(@Param("nodeId") String nodeId);
 }

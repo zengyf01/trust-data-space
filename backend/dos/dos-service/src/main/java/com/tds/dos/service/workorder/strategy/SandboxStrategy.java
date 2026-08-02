@@ -26,7 +26,7 @@ public class SandboxStrategy implements WorkOrderStrategy {
 
     @Override
     public String getWorkOrderType() {
-        return "SANDBOX";
+        return "2";
     }
 
     @Override

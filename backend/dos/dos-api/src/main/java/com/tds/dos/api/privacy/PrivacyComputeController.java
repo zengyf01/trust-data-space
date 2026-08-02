@@ -126,40 +126,93 @@ public class PrivacyComputeController {
         return ApiResponse.success(result);
     }
 
+    /**
+     * 下载 PSI 任务一方的结果 CSV
+     */
+    @GetMapping("/psi/{taskId}/result")
+    public org.springframework.http.ResponseEntity<byte[]> downloadPsiResult(
+            @PathVariable String taskId,
+            @RequestParam(defaultValue = "alice") String party) {
+        byte[] data = privacyComputeService.downloadPsiResultFile(taskId, party);
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.parseMediaType("text/csv"));
+        headers.setContentDispositionFormData("attachment", "psi_result_" + taskId + "_" + party + ".csv");
+        return new org.springframework.http.ResponseEntity<>(data, headers,
+            org.springframework.http.HttpStatus.OK);
+    }
+
     // ==================== PSI 求交 ====================
 
     /**
-     * 执行 PSI 求交任务
+     * 创建 PSI 求交任务（只创建，不执行）
      * @param taskName 任务名称
+     * @param partyANodeId A方节点ID
+     * @param partyBNodeId B方节点ID
      * @param partyADataPath A方数据路径
      * @param partyBDataPath B方数据路径
      * @param keyColumn 关联键列
      * @param protocol 协议类型 (ECPSI/RR22PSI)
      * @param resultType 结果类型 (INTERSECTION/UNION/...)
+     * @param nodeMode 节点模式 (RAY/KUSCIA)
+     * @return 任务ID
      */
-    @PostMapping("/psi/execute")
-    public ApiResponse<?> executePsi(@RequestBody Map<String, Object> params) {
+    @PostMapping("/psi/create")
+    public ApiResponse<?> createPsiTask(@RequestBody Map<String, Object> params) {
         String taskName = (String) params.get("taskName");
+        String partyANodeId = (String) params.get("partyANodeId");
+        String partyBNodeId = (String) params.get("partyBNodeId");
         String partyADataPath = (String) params.get("partyADataPath");
         String partyBDataPath = (String) params.get("partyBDataPath");
         String keyColumn = (String) params.get("keyColumn");
         String protocol = (String) params.getOrDefault("protocol", "ECPSI");
         String resultType = (String) params.getOrDefault("resultType", "INTERSECTION");
+        String nodeMode = (String) params.getOrDefault("nodeMode", "RAY");
 
-        Map<String, Object> taskParams = Map.of(
-            "protocol", protocol,
-            "resultType", resultType,
-            "nodeMode", params.getOrDefault("nodeMode", "RAY")
-        );
+        // 构建任务参数
+        Map<String, Object> taskParams = new HashMap<>();
+        taskParams.put("protocol", protocol);
+        taskParams.put("resultType", resultType);
+        taskParams.put("nodeMode", nodeMode);
+        taskParams.put("partyANodeId", partyANodeId);
+        taskParams.put("partyBNodeId", partyBNodeId);
+        taskParams.put("partyADataPath", partyADataPath);
+        taskParams.put("partyBDataPath", partyBDataPath);
+        taskParams.put("keyColumn", keyColumn);
 
-        String taskId = privacyComputeService.executePsiTask(
-            taskName, partyADataPath, partyBDataPath, keyColumn, taskParams);
+        // 调用通用的任务创建接口
+        String taskId = privacyComputeService.createTask(taskParams);
 
-        return ApiResponse.success(Map.of("taskId", taskId, "computeType", "PSI"));
+        // 返回任务ID，状态为CREATED
+        return ApiResponse.success(Map.of(
+            "taskId", taskId,
+            "computeType", "PSI",
+            "status", "CREATED"
+        ));
     }
 
     /**
-     * 执行 PSI 求交并等待结果
+     * 执行已创建的 PSI 任务
+     * @param taskId 任务ID
+     */
+    @PostMapping("/psi/{taskId}/execute")
+    public ApiResponse<?> executePsiTask(@PathVariable String taskId) {
+        // 查询任务是否存在
+        com.tds.dos.dal.msp.entity.TbTask task = privacyComputeService.getTaskById(taskId);
+        if (task == null) {
+            return ApiResponse.error("任务不存在");
+        }
+        if (task.getfStatus() != 1) { // CREATED = 1
+            return ApiResponse.error("任务状态不是已创建，无法执行。当前状态: " + task.getfStatus());
+        }
+
+        // 执行任务
+        privacyComputeService.executeTask(taskId);
+
+        return ApiResponse.success(Map.of("taskId", taskId, "status", "EXECUTING"));
+    }
+
+    /**
+     * 执行 PSI 求交并等待结果（一步完成，创建+执行+等待）
      */
     @PostMapping("/psi/executeWithResult")
     public ApiResponse<?> executePsiWithResult(@RequestBody Map<String, Object> params) {
@@ -171,7 +224,7 @@ public class PrivacyComputeController {
             Integer.parseInt(params.get("timeoutSeconds").toString()) : 300;
 
         Map<String, Object> result = privacyComputeService.executePsiTaskWithResult(
-            taskName, partyADataPath, partyBDataPath, keyColumn, timeoutSeconds);
+            taskName, partyADataPath, partyBDataPath, keyColumn, params, timeoutSeconds);
 
         return ApiResponse.success(result);
     }

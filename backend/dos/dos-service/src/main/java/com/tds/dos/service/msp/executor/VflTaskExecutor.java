@@ -9,19 +9,18 @@ import java.util.Map;
 
 /**
  * 纵向联邦学习任务执行器
+ *
+ * <p>状态说明：原实现是 Thread.sleep(3500) + 返回伪造的 success JSON，从未真正执行过纵向联邦学习。
+ * 现在直接抛错，避免用户被假成功误导。
  */
 @Component
 public class VflTaskExecutor extends AbstractTaskExecutor {
 
     @Override
     protected String doExecute(String taskId, TbTask task, Map<String, String> params) throws Exception {
-        // TODO: 实现纵向联邦学习逻辑
-        log.info("VFL Task {} execution - TODO: implement VFL logic", taskId);
-
-        // 模拟执行
-        Thread.sleep(3500);
-
-        return "{\"status\":\"ok\",\"task_id\":\"" + taskId + "\",\"result\":\"Vertical federated learning completed\"}";
+        throw new UnsupportedOperationException(
+            "纵向联邦学习（VFL）暂未实现（原 VflTaskExecutor 是 sleep+假成功 stub）。"
+                + "请改用 PSI 求交（POST /api/dos/privacy/psi/executeWithResult）。");
     }
 
     @Override
@@ -31,7 +30,6 @@ public class VflTaskExecutor extends AbstractTaskExecutor {
 
     @Override
     public boolean cancel(String taskId) {
-        log.warn("VFL task cancellation not implemented yet");
         return false;
     }
 

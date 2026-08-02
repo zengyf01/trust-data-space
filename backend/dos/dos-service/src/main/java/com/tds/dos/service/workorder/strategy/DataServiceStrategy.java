@@ -45,7 +45,7 @@ public class DataServiceStrategy implements WorkOrderStrategy {
 
     @Override
     public String getWorkOrderType() {
-        return "DATA_SERVICE";
+        return "1";
     }
 
     @Override

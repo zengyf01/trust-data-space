@@ -1,6 +1,8 @@
 spring:
   application:
     name: dos-api
+  config:
+    import: optional:nacos:${SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR:nacos:8848}/nacos/default
   cloud:
     nacos:
       discovery:

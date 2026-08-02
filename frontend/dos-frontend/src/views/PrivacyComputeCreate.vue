@@ -385,7 +385,7 @@ const handleCreateTask = () => {
   createLoading.value = true
   try {
     if (createType.value === 'psi') {
-      handleExecutePsi()
+      handleCreatePsi()
     } else if (createType.value === 'mpc') {
       handleExecuteMpc()
     } else if (createType.value === 'fl') {
@@ -402,7 +402,8 @@ const handleCreateTask = () => {
   }
 }
 
-const handleExecutePsi = async () => {
+// 只创建PSI任务，不执行
+const handleCreatePsi = async () => {
   if (!psiForm.taskName || !psiForm.partyADataPath || !psiForm.partyBDataPath || !psiForm.keyColumn) {
     message.warning('请填写完整信息')
     return
@@ -415,9 +416,8 @@ const handleExecutePsi = async () => {
     message.warning('A方节点和B方节点不能相同')
     return
   }
-  psiLoading.value = true
   try {
-    const response = await axios.post('/api/dos/privacy/psi/execute', {
+    const createRes = await axios.post('/api/dos/privacy/psi/create', {
       taskName: psiForm.taskName,
       partyANodeId: psiForm.partyANodeId,
       partyBNodeId: psiForm.partyBNodeId,
@@ -428,12 +428,14 @@ const handleExecutePsi = async () => {
       resultType: psiForm.resultType,
       nodeMode: psiForm.nodeMode
     })
-    message.success('PSI任务已创建: ' + response.data.data.taskId)
-    psiResult.value = response.data.data
+    const taskId = createRes.data.data?.taskId
+    if (taskId) {
+      message.success('PSI任务已创建: ' + taskId + '，请到任务列表执行')
+    } else {
+      message.error('任务创建失败: ' + (createRes.data.msg || '未知错误'))
+    }
   } catch (error) {
-    message.error('执行失败: ' + (error.message || '未知错误'))
-  } finally {
-    psiLoading.value = false
+    message.error('创建失败: ' + (error.message || '未知错误'))
   }
 }
 
