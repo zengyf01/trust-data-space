@@ -10,10 +10,15 @@
               <a-select v-model:value="form.type" placeholder="请选择任务类型">
                 <a-select-option value="1">PSI求交</a-select-option>
                 <a-select-option value="2">MPC安全计算</a-select-option>
-                <a-select-option value="3">联邦学习</a-select-option>
+                <a-select-option value="fl">联邦学习</a-select-option>
                 <a-select-option value="4">自定义代码</a-select-option>
-                <a-select-option value="5">纵向联邦</a-select-option>
                 <a-select-option value="6">复合任务</a-select-option>
+              </a-select>
+            </a-form-item>
+            <a-form-item v-if="form.type === 'fl'" label="联邦类型" required>
+              <a-select v-model:value="form.flMode" placeholder="请选择联邦类型">
+                <a-select-option value="horizontal">横向联邦</a-select-option>
+                <a-select-option value="vertical">纵向联邦</a-select-option>
               </a-select>
             </a-form-item>
             <a-form-item label="描述">
@@ -38,15 +43,21 @@ import { message } from 'ant-design-vue'
 import { taskAPI } from '../api'
 
 const router = useRouter()
-const form = ref({ name: '', type: '', description: '' })
+const form = ref({ name: '', type: '', flMode: 'horizontal', description: '' })
 
 const handleCreate = async () => {
   if (!form.value.name) {
     message.warning('请输入任务名称')
     return
   }
+  // 联邦学习的二级选项映射为后端 f_type: 横向=3, 纵向=5
+  const payload = { ...form.value }
+  if (payload.type === 'fl') {
+    payload.type = payload.flMode === 'vertical' ? 5 : 3
+  }
+  delete payload.flMode
   try {
-    await taskAPI.create(form.value)
+    await taskAPI.create(payload)
     message.success('任务创建成功')
     router.push('/tasks')
   } catch (e) {

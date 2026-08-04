@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS `tb_task` (
   `f_id` VARCHAR(32) NOT NULL COMMENT '主键ID',
   `f_task_code` VARCHAR(64) DEFAULT NULL COMMENT '任务编号',
   `f_name` VARCHAR(128) NOT NULL COMMENT '任务名称',
-  `f_type` INT(2) DEFAULT NULL COMMENT '任务类型(1PSI,2MPC,3联邦学习,4自定义代码,5纵向联邦,6复合任务)',
+  `f_type` INT(2) DEFAULT NULL COMMENT '任务类型(1PSI,2MPC,3横向联邦,4自定义代码,5纵向联邦,6复合任务)',
   `f_status` INT(2) DEFAULT 1 COMMENT '任务状态(1创建,2待执行,3执行中,4完成,5失败,6取消)',
   `f_algorithm` VARCHAR(128) DEFAULT NULL COMMENT '算法名称',
   `f_participants` TEXT DEFAULT NULL COMMENT '参与方列表(JSON)',

@@ -5,7 +5,7 @@ import java.util.Map;
 
 /**
  * 隐私计算服务接口
- * 支持 PSI、MPC、联邦学习等隐私计算任务
+ * 支持 PSI、MPC、横向联邦等隐私计算任务
  */
 public interface IPrivacyComputeService {
 
@@ -80,6 +80,14 @@ public interface IPrivacyComputeService {
      */
     byte[] downloadPsiResultFile(String taskId, String party);
 
+    /**
+     * 下载 FL/VFL 任务一方的模型文件（容器内 /tmp/fl_model_{taskId}.pkl 或 /tmp/vfl_model_{taskId}.pkl）
+     * @param taskId FL/VFL 任务 ID
+     * @param party  alice 或 bob
+     * @return 模型文件字节内容；任务未完成或文件不存在时抛异常
+     */
+    byte[] downloadModelFile(String taskId, String party);
+
     // ==================== PSI 求交 ====================
 
     /**
@@ -108,23 +116,40 @@ public interface IPrivacyComputeService {
                                                   String partyBDataPath, String keyColumn,
                                                   Map<String, Object> params, int timeoutSeconds);
 
+
+    // ==================== PIR 隐匿查询 ====================
+
+    /**
+     * 创建 PIR 任务（只创建，不执行，不等待结果）
+     * @param params PIR任务参数
+     * @return 任务ID
+     */
+    String createPirTask(Map<String, Object> params);
+
+    /**
+     * 执行 PIR 隐匿查询并返回结果（创建 + 执行 + 等待结果，向后兼容）
+     * @param params PIR任务参数
+     * @return PIR查询结果
+     */
+    Map<String, Object> executePirTaskWithResult(Map<String, Object> params);
+
     // ==================== MPC 多方计算 ====================
 
     /**
-     * 执行 MPC 任务
+     * 创建 MPC 任务（只创建，不执行）
      * @param taskName 任务名称
      * @param participants 参与方列表
      * @param algorithm 算法名称
      * @param params 参数
      * @return 任务ID
      */
-    String executeMpcTask(String taskName, List<String> participants,
-                          String algorithm, Map<String, Object> params);
+    String createMpcTask(String taskName, List<String> participants,
+                         String algorithm, Map<String, Object> params);
 
-    // ==================== 联邦学习 ====================
+    // ==================== 横向联邦 ====================
 
     /**
-     * 执行联邦学习任务
+     * 创建横向联邦任务（只创建，不执行）
      * @param taskName 任务名称
      * @param participants 参与方列表
      * @param labelColumn 标签列
@@ -132,12 +157,12 @@ public interface IPrivacyComputeService {
      * @param params 其他参数
      * @return 任务ID
      */
-    String executeFederatedLearningTask(String taskName, List<String> participants,
-                                         String labelColumn, List<String> featureColumns,
-                                         Map<String, Object> params);
+    String createFederatedLearningTask(String taskName, List<String> participants,
+                                        String labelColumn, List<String> featureColumns,
+                                        Map<String, Object> params);
 
     /**
-     * 执行纵向联邦学习任务
+     * 创建纵向联邦学习任务（只创建，不执行）
      * @param taskName 任务名称
      * @param participants 参与方列表
      * @param labelColumn 标签列
@@ -145,9 +170,9 @@ public interface IPrivacyComputeService {
      * @param params 其他参数
      * @return 任务ID
      */
-    String executeVerticalFlTask(String taskName, List<String> participants,
-                                  String labelColumn, Map<String, List<String>> featureColumns,
-                                  Map<String, Object> params);
+    String createVerticalFlTask(String taskName, List<String> participants,
+                                 String labelColumn, Map<String, List<String>> featureColumns,
+                                 Map<String, Object> params);
 
     // ==================== DAG 任务 ====================
 

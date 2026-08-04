@@ -27,7 +27,7 @@
               <a-button size="small" @click="handleQueryTaskStatus(record)" v-if="[2, 3].includes(record.status)">查询状态</a-button>
               <a-button size="small" danger @click="handleCancelTask(record)" v-if="![4, 5, 6].includes(record.status)">取消</a-button>
               <a-button size="small" type="primary" @click="handleGetTaskResult(record)" v-if="record.status === 4">查看结果</a-button>
-              <a-button size="small" danger @click="handleDeleteTask(record)" v-if="record.status === 6">删除</a-button>
+              <a-button size="small" danger @click="handleDeleteTask(record)" v-if="[5, 6].includes(record.status)">删除</a-button>
             </a-space>
           </template>
         </template>
@@ -39,10 +39,12 @@
       <a-tabs v-if="currentTask" v-model:activeKey="detailActiveTab">
         <!-- 基本信息页签 -->
         <a-tab-pane key="basic" tab="基本信息">
-          <a-descriptions :column="2" size="small" bordered>
+          <!-- 公共字段区 -->
+          <a-descriptions :column="2" size="small" bordered title="基本信息">
             <a-descriptions-item label="任务ID" :span="2">
               <a-typography-paragraph copyable style="margin: 0">{{ currentTask.taskId }}</a-typography-paragraph>
             </a-descriptions-item>
+            <a-descriptions-item label="任务编号">{{ currentTask.taskCode || '-' }}</a-descriptions-item>
             <a-descriptions-item label="任务名称">{{ currentTask.name || '-' }}</a-descriptions-item>
             <a-descriptions-item label="任务类型">
               <a-tag>{{ getTaskTypeText(currentTask.type) }}</a-tag>
@@ -50,10 +52,37 @@
             <a-descriptions-item label="状态">
               <a-tag :color="getTaskStatusColor(currentTask.status)">{{ getTaskStatusText(currentTask.status) }}</a-tag>
             </a-descriptions-item>
+            <a-descriptions-item label="创建人">{{ currentTask.creator || '-' }}</a-descriptions-item>
             <a-descriptions-item label="创建时间">{{ currentTask.createTime || '-' }}</a-descriptions-item>
             <a-descriptions-item label="算法">{{ currentTask.algorithm || '-' }}</a-descriptions-item>
             <a-descriptions-item label="节点模式">{{ currentTask.nodeMode || 'RAY' }}</a-descriptions-item>
             <a-descriptions-item label="描述" :span="2">{{ currentTask.description || '-' }}</a-descriptions-item>
+          </a-descriptions>
+
+          <!-- 参与方字段区 -->
+          <a-descriptions
+            :column="2"
+            size="small"
+            bordered
+            title="参与方"
+            style="margin-top: 16px"
+          >
+            <a-descriptions-item label="参与方列表" :span="2">
+              <a-tag v-for="p in (currentTask.participants || '').split(',').filter(x => x.trim())" :key="p" style="margin: 2px">{{ p.trim() }}</a-tag>
+              <span v-if="!(currentTask.participants || '').split(',').filter(x => x.trim()).length">-</span>
+            </a-descriptions-item>
+            <a-descriptions-item label="A方节点" v-if="currentTask.partyANodeId">
+              <a-typography-paragraph copyable style="margin: 0">{{ currentTask.partyANodeId }}</a-typography-paragraph>
+            </a-descriptions-item>
+            <a-descriptions-item label="B方节点" v-if="currentTask.partyBNodeId">
+              <a-typography-paragraph copyable style="margin: 0">{{ currentTask.partyBNodeId }}</a-typography-paragraph>
+            </a-descriptions-item>
+            <a-descriptions-item label="A方数据路径" v-if="currentTask.partyADataPath" :span="2">
+              <code>{{ currentTask.partyADataPath }}</code>
+            </a-descriptions-item>
+            <a-descriptions-item label="B方数据路径" v-if="currentTask.partyBDataPath" :span="2">
+              <code>{{ currentTask.partyBDataPath }}</code>
+            </a-descriptions-item>
           </a-descriptions>
         </a-tab-pane>
 
@@ -67,18 +96,22 @@
           </a-descriptions>
         </a-tab-pane>
 
-        <!-- PSI脚本页签 -->
-        <a-tab-pane key="code" tab="PSI脚本">
+        <!-- 执行脚本页签（按任务类型动态命名） -->
+        <a-tab-pane key="code" :tab="getCodeTabName(currentTask.type)">
           <a-spin v-if="loadingCode" tip="加载代码中..." />
           <template v-else>
-            <a-empty v-if="!taskCode" description="暂无生成的代码，任务创建时生成" />
+            <a-empty v-if="!taskCode" description="暂无生成的代码，任务执行后生成" />
             <div v-else>
               <a-space style="margin-bottom: 12px">
+                <a-tag color="processing">{{ getCodeTabName(currentTask.type) }} · {{ taskCode.split('\n').length }} 行 · {{ taskCode.length }} 字符</a-tag>
                 <a-button type="primary" @click="handleCopyCode">
                   <template #icon><CopyOutlined /></template>
                   复制代码
                 </a-button>
-                <a-tag color="processing">代码长度: {{ taskCode.length }} 字符</a-tag>
+                <a-button @click="handleDownloadCode">
+                  <template #icon><DownloadOutlined /></template>
+                  下载脚本
+                </a-button>
               </a-space>
               <a-typography-text code style="display: block; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
                 {{ taskCode }}
@@ -91,29 +124,91 @@
         <a-tab-pane key="result" tab="执行结果">
           <template v-if="currentTask.status === 4">
             <a-empty v-if="!parsedResult" description="暂无执行结果" />
+            <template v-else-if="isPsiResult">
+              <!-- PSI 结果展示 -->
+              <a-descriptions :column="2" size="small" bordered>
+                <a-descriptions-item label="协议">{{ parsedResult.protocol || 'ECPSI' }}</a-descriptions-item>
+                <a-descriptions-item label="Ray Head">{{ parsedResult.ray_head_url || '-' }}</a-descriptions-item>
+                <a-descriptions-item label="Job ID" :span="2">
+                  <a-typography-paragraph copyable style="margin: 0">{{ parsedResult.job_id || '-' }}</a-typography-paragraph>
+                </a-descriptions-item>
+                <a-descriptions-item label="A方数据量">{{ parsedResult.party_a_count || 0 }}</a-descriptions-item>
+                <a-descriptions-item label="B方数据量">{{ parsedResult.party_b_count || 0 }}</a-descriptions-item>
+                <a-descriptions-item label="交集数量" :span="2">
+                  <a-badge :count="parsedResult.intersection_count || 0" :number-style="{backgroundColor: '#52c41a'}" />
+                </a-descriptions-item>
+                <a-descriptions-item label="交集样例" :span="2">
+                  <a-tag v-for="id in (parsedResult.sample_result || [])" :key="id" style="margin: 2px">{{ id }}</a-tag>
+                  <span v-if="!parsedResult.sample_result || parsedResult.sample_result.length === 0">无</span>
+                </a-descriptions-item>
+                <a-descriptions-item label="执行消息" :span="2">{{ parsedResult.message || '-' }}</a-descriptions-item>
+                <a-descriptions-item label="结果下载" :span="2">
+                  <a-button type="primary" @click="handleDownloadResult('alice')" v-if="parsedResult.output_path?.alice">
+                    <template #icon><DownloadOutlined /></template>
+                    下载结果
+                  </a-button>
+                  <a-tag v-else color="warning">无可用结果</a-tag>
+                </a-descriptions-item>
+              </a-descriptions>
+            </template>
+            <template v-else-if="isFlResult">
+              <!-- FL/VFL 结果展示 -->
+              <a-descriptions :column="2" size="small" bordered>
+                <a-descriptions-item label="Ray Head">{{ parsedResult.ray_head_url || '-' }}</a-descriptions-item>
+                <a-descriptions-item label="交付模式">{{ parsedResult.deliveryMode || '-' }}</a-descriptions-item>
+                <a-descriptions-item label="执行消息" :span="2">{{ parsedResult.message || '-' }}</a-descriptions-item>
+              </a-descriptions>
+              <a-divider>各方结果</a-divider>
+              <a-row :gutter="16">
+                <a-col :span="12" v-if="parsedResult.party_alice">
+                  <a-card title="Alice 方" size="small">
+                    <a-descriptions :column="1" size="small">
+                      <a-descriptions-item label="状态">
+                        <a-tag :color="parsedResult.party_alice.status === 'SUCCEEDED' ? 'green' : 'red'">
+                          {{ parsedResult.party_alice.status }}
+                        </a-tag>
+                      </a-descriptions-item>
+                      <a-descriptions-item label="训练准确率">
+                        {{ parsedResult.party_alice.trainAccuracy != null ? parsedResult.party_alice.trainAccuracy.toFixed(4) : '-' }}
+                      </a-descriptions-item>
+                      <a-descriptions-item label="模型路径">{{ parsedResult.party_alice.modelPath || '-' }}</a-descriptions-item>
+                      <a-descriptions-item label="模型下载">
+                        <a-button type="primary" size="small" @click="handleDownloadModel('alice')" v-if="parsedResult.party_alice.modelPath">
+                          <template #icon><DownloadOutlined /></template>
+                          下载模型
+                        </a-button>
+                        <a-tag v-else color="warning">无模型</a-tag>
+                      </a-descriptions-item>
+                    </a-descriptions>
+                  </a-card>
+                </a-col>
+                <a-col :span="12" v-if="parsedResult.party_bob && parsedResult.deliveryMode === 'ALL_PARTIES'">
+                  <a-card title="Bob 方" size="small">
+                    <a-descriptions :column="1" size="small">
+                      <a-descriptions-item label="状态">
+                        <a-tag :color="parsedResult.party_bob.status === 'SUCCEEDED' ? 'green' : 'red'">
+                          {{ parsedResult.party_bob.status }}
+                        </a-tag>
+                      </a-descriptions-item>
+                      <a-descriptions-item label="训练准确率">
+                        {{ parsedResult.party_bob.trainAccuracy != null ? parsedResult.party_bob.trainAccuracy.toFixed(4) : '-' }}
+                      </a-descriptions-item>
+                      <a-descriptions-item label="模型路径">{{ parsedResult.party_bob.modelPath || '-' }}</a-descriptions-item>
+                      <a-descriptions-item label="模型下载">
+                        <a-button type="primary" size="small" @click="handleDownloadModel('bob')" v-if="parsedResult.party_bob.modelPath">
+                          <template #icon><DownloadOutlined /></template>
+                          下载模型
+                        </a-button>
+                        <a-tag v-else color="warning">无模型</a-tag>
+                      </a-descriptions-item>
+                    </a-descriptions>
+                  </a-card>
+                </a-col>
+              </a-row>
+              <a-alert v-if="parsedResult.deliveryMode === 'AGGREGATOR_ONLY'" message="聚合模式：仅 Alice 方保存聚合模型" type="info" show-icon style="margin-top: 16px" />
+            </template>
             <a-descriptions v-else :column="2" size="small" bordered>
-              <a-descriptions-item label="协议">{{ parsedResult.protocol || 'ECPSI' }}</a-descriptions-item>
-              <a-descriptions-item label="Ray Head">{{ parsedResult.ray_head_url || '-' }}</a-descriptions-item>
-              <a-descriptions-item label="Job ID" :span="2">
-                <a-typography-paragraph copyable style="margin: 0">{{ parsedResult.job_id || '-' }}</a-typography-paragraph>
-              </a-descriptions-item>
-              <a-descriptions-item label="A方数据量">{{ parsedResult.party_a_count || 0 }}</a-descriptions-item>
-              <a-descriptions-item label="B方数据量">{{ parsedResult.party_b_count || 0 }}</a-descriptions-item>
-              <a-descriptions-item label="交集数量" :span="2">
-                <a-badge :count="parsedResult.intersection_count || 0" :number-style="{backgroundColor: '#52c41a'}" />
-              </a-descriptions-item>
-              <a-descriptions-item label="交集样例" :span="2">
-                <a-tag v-for="id in (parsedResult.sample_result || [])" :key="id" style="margin: 2px">{{ id }}</a-tag>
-                <span v-if="!parsedResult.sample_result || parsedResult.sample_result.length === 0">无</span>
-              </a-descriptions-item>
               <a-descriptions-item label="执行消息" :span="2">{{ parsedResult.message || '-' }}</a-descriptions-item>
-              <a-descriptions-item label="结果下载" :span="2">
-                <a-button type="primary" @click="handleDownloadResult('alice')" v-if="parsedResult.output_path?.alice">
-                  <template #icon><DownloadOutlined /></template>
-                  下载结果
-                </a-button>
-                <a-tag v-else-if="!parsedResult.output_path?.alice" color="warning">无可用结果</a-tag>
-              </a-descriptions-item>
             </a-descriptions>
           </template>
           <a-result v-else-if="currentTask.status === 5" status="error" title="任务执行失败" :subTitle="parsedResult?.message || '任务执行失败'" />
@@ -198,20 +293,72 @@ const parsedResult = computed(() => {
   }
 })
 
-// 格式化参数key为中文
+// 判断是否为 PSI 结果
+const isPsiResult = computed(() => {
+  return parsedResult.value && parsedResult.value.intersection_count !== undefined
+})
+
+// 判断是否为 FL/VFL 结果
+const isFlResult = computed(() => {
+  return parsedResult.value && (parsedResult.value.party_alice || parsedResult.value.party_bob)
+})
+
+// 格式化参数key为中文（覆盖 PSI / FL / VFL / PIR 全部用户输入字段）
 const formatParamKey = (key) => {
   const keyMap = {
+    // 通用
+    'partyANodeId': 'A方节点ID',
+    'partyBNodeId': 'B方节点ID',
     'partyADataPath': 'A方数据路径',
     'partyBDataPath': 'B方数据路径',
+    'nodeMode': '节点模式',
+    'computeType': '计算类型',
+    'algorithm': '算法',
+    'selfParty': '本方角色',
+    'partyACrossSiloAddress': 'A方跨域通信地址',
+    'partyBCrossSiloAddress': 'B方跨域通信地址',
+    'partyASpuAddress': 'A方SPU地址',
+    'partyBSpuAddress': 'B方SPU地址',
+    // PSI
     'keyColumn': '关联键',
     'protocol': '协议',
     'resultType': '结果类型',
-    'nodeMode': '节点模式',
-    'partyANodeId': 'A方节点ID',
-    'partyBNodeId': 'B方节点ID',
-    'computeType': '计算类型'
+    'receiver': '接收方',
+    // 横向联邦 (HFL)
+    'labelColumn': '标签列',
+    'featureColumns': '特征列',
+    'modelType': '模型类型',
+    'deliveryMode': '交付模式',
+    'epochs': '训练轮数',
+    'batchSize': '批大小',
+    'learningRate': '学习率',
+    'modelPath': '模型保存路径',
+    // 纵向联邦 (VFL)
+    'idColumn': '样本ID列',
+    'labelOwner': '标签拥有方',
+    'partyAFeatureColumns': 'A方特征列',
+    'partyBFeatureColumns': 'B方特征列',
+    // PIR
+    'queryColumn': '查询列',
+    'databasePath': '数据库路径',
+    'queryValue': '查询值'
   }
   return keyMap[key] || key
+}
+
+// 根据任务类型返回脚本 Tab 名
+const getCodeTabName = (type) => {
+  const names = {
+    1: 'PSI脚本',
+    2: 'MPC脚本',
+    3: '横向联邦脚本',
+    4: '自定义代码',
+    5: '纵向联邦脚本',
+    6: '复合任务脚本',
+    7: '组件DAG脚本',
+    8: 'PIR脚本'
+  }
+  return names[type] || '执行脚本'
 }
 
 // 复制代码
@@ -222,6 +369,27 @@ const handleCopyCode = async () => {
   } catch {
     message.error('复制失败')
   }
+}
+
+// 下载脚本（按任务类型生成对应文件名）
+const handleDownloadCode = () => {
+  if (!taskCode.value || !currentTask.value) return
+  const typeMap = {
+    1: 'psi', 2: 'mpc', 3: 'hfl', 4: 'custom',
+    5: 'vfl', 6: 'compound', 7: 'dag', 8: 'pir'
+  }
+  const prefix = typeMap[currentTask.value.type] || 'task'
+  const filename = `${prefix}_${currentTask.value.taskId || 'script'}.py`
+  const blob = new Blob([taskCode.value], { type: 'text/x-python;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+  message.success(`已下载: ${filename}`)
 }
 
 // 复制日志
@@ -260,7 +428,7 @@ const getTaskStatusText = (status) => {
 }
 
 const getTaskTypeText = (type) => {
-  const texts = { 1: 'PSI', 2: 'MPC', 3: '联邦学习', 5: '纵向联邦学习', 6: 'DAG任务' }
+  const texts = { 1: 'PSI', 2: 'MPC', 3: '横向联邦', 5: '纵向联邦', 6: 'DAG任务' }
   return texts[type] || '未知'
 }
 
@@ -396,8 +564,28 @@ const handleCancelTask = async (record) => {
 
 const handleGetTaskResult = async (record) => {
   try {
+    // 先获取任务详情，确保 currentTask 是最新数据
+    const detailResp = await axios.get(`/api/dos/privacy/task/${record.taskId}/detail`)
+    if (detailResp.data.code === 200 && detailResp.data.data) {
+      currentTask.value = detailResp.data.data
+      // 解析 parameters
+      if (detailResp.data.data.parameters) {
+        try {
+          taskParams.value = typeof detailResp.data.data.parameters === 'string'
+            ? JSON.parse(detailResp.data.data.parameters)
+            : detailResp.data.data.parameters
+        } catch {}
+      }
+      // 解析 code
+      if (detailResp.data.data.code) {
+        taskCode.value = detailResp.data.data.code
+      }
+    }
+
+    // 获取执行结果
     const response = await axios.get(`/api/dos/privacy/task/${record.taskId}/result`)
     currentTaskResult.value = response.data.data
+
     detailActiveTab.value = 'result'
     taskDetailVisible.value = true
   } catch (error) {
@@ -425,6 +613,29 @@ const handleDownloadResult = async (party) => {
     message.success('下载成功')
   } catch (error) {
     message.error('下载失败: ' + (error.message || '未知错误'))
+  }
+}
+
+// 下载FL/VFL模型文件
+const handleDownloadModel = async (party) => {
+  if (!currentTask.value) return
+  try {
+    const response = await axios.get(`/api/dos/privacy/model/${currentTask.value.taskId}/download`, {
+      params: { party },
+      responseType: 'blob'
+    })
+    const blob = new Blob([response.data], { type: 'application/octet-stream' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `model_${currentTask.value.taskId}_${party}.pkl`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    message.success('模型下载成功')
+  } catch (error) {
+    message.error('模型下载失败: ' + (error.message || '未知错误'))
   }
 }
 
@@ -465,6 +676,11 @@ watch(detailActiveTab, async (newTab) => {
 })
 
 const handleDeleteTask = async (record) => {
+  const isFailed = record.status === 5
+  const tip = isFailed
+    ? `确定要删除失败任务「${record.name || record.taskId}」吗？删除后不可恢复。`
+    : `确定要删除已取消任务「${record.name || record.taskId}」吗？`
+  if (!window.confirm(tip)) return
   try {
     await axios.delete(`/api/dos/privacy/task/${record.taskId}`)
     message.success('任务已删除')

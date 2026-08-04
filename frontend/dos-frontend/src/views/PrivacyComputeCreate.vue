@@ -5,6 +5,7 @@
         <!-- PSI 求交 -->
         <a-tab-pane key="psi" tab="PSI 求交">
           <a-form :model="psiForm" layout="vertical">
+            <a-divider orientation="left" plain>基础信息</a-divider>
             <a-row :gutter="16">
               <a-col :span="12">
                 <a-form-item label="任务名称" required>
@@ -17,40 +18,52 @@
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-divider>参与节点</a-divider>
+            <a-divider orientation="left" plain><span style="font-size: 14px; font-weight: 600">👥 参与方配置</span></a-divider>
             <a-row :gutter="16">
+              <!-- A 方区域 -->
               <a-col :span="12">
-                <a-form-item label="A方节点" required>
-                  <a-select v-model:value="psiForm.partyANodeId" placeholder="选择A方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
-                    <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === psiForm.partyBNodeId">
-                      {{ node.nodeName }} ({{ node.nodeMode }})
-                    </a-select-option>
-                  </a-select>
-                </a-form-item>
+                <a-card size="small" class="party-card party-card-a">
+                  <template #title>
+                    <span class="party-card-title">
+                      <span class="party-icon">🅰️</span>
+                      <span>A 方（数据提供方）</span>
+                    </span>
+                  </template>
+                  <a-form-item label="A 方节点" required>
+                    <a-select v-model:value="psiForm.partyANodeId" placeholder="选择 A 方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
+                      <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === psiForm.partyBNodeId">
+                        {{ node.nodeName }} ({{ node.nodeMode }})
+                      </a-select-option>
+                    </a-select>
+                  </a-form-item>
+                  <a-form-item label="A 方数据路径" required>
+                    <a-input v-model:value="psiForm.partyADataPath" placeholder="/data/party_a.csv" />
+                  </a-form-item>
+                </a-card>
               </a-col>
+              <!-- B 方区域 -->
               <a-col :span="12">
-                <a-form-item label="B方节点" required>
-                  <a-select v-model:value="psiForm.partyBNodeId" placeholder="选择B方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
-                    <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === psiForm.partyANodeId">
-                      {{ node.nodeName }} ({{ node.nodeMode }})
-                    </a-select-option>
-                  </a-select>
-                </a-form-item>
+                <a-card size="small" class="party-card party-card-b">
+                  <template #title>
+                    <span class="party-card-title">
+                      <span class="party-icon">🅱️</span>
+                      <span>B 方（数据提供方）</span>
+                    </span>
+                  </template>
+                  <a-form-item label="B 方节点" required>
+                    <a-select v-model:value="psiForm.partyBNodeId" placeholder="选择 B 方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
+                      <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === psiForm.partyANodeId">
+                        {{ node.nodeName }} ({{ node.nodeMode }})
+                      </a-select-option>
+                    </a-select>
+                  </a-form-item>
+                  <a-form-item label="B 方数据路径" required>
+                    <a-input v-model:value="psiForm.partyBDataPath" placeholder="/data/party_b.csv" />
+                  </a-form-item>
+                </a-card>
               </a-col>
             </a-row>
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="A方数据路径" required>
-                  <a-input v-model:value="psiForm.partyADataPath" placeholder="/data/party_a.csv" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="B方数据路径" required>
-                  <a-input v-model:value="psiForm.partyBDataPath" placeholder="/data/party_b.csv" />
-                </a-form-item>
-              </a-col>
-            </a-row>
-            <a-divider>计算配置</a-divider>
+            <a-divider orientation="left" plain>计算配置</a-divider>
             <a-row :gutter="16">
               <a-col :span="8">
                 <a-form-item label="协议类型">
@@ -77,20 +90,38 @@
                 </a-form-item>
               </a-col>
             </a-row>
+            <a-divider />
+            <a-row>
+              <a-col :span="24" style="text-align: right">
+                <a-space>
+                  <a-button @click="handleCancel">取消</a-button>
+                  <a-button @click="handleCreatePsi" :loading="psiLoading">创建任务</a-button>
+                  <a-button
+                    type="primary"
+                    :disabled="!psiCreatedTaskId"
+                    :loading="executing"
+                    @click="handleExecuteTask(psiCreatedTaskId, 'PSI')"
+                  >
+                    执行任务
+                  </a-button>
+                </a-space>
+              </a-col>
+            </a-row>
           </a-form>
         </a-tab-pane>
 
         <!-- MPC 多方计算 -->
         <a-tab-pane key="mpc" tab="MPC 多方计算">
           <a-form :model="mpcForm" layout="vertical">
+            <a-divider orientation="left" plain>基础信息</a-divider>
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="任务名称">
+                <a-form-item label="任务名称" required>
                   <a-input v-model:value="mpcForm.taskName" placeholder="请输入任务名称" />
                 </a-form-item>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="算法名称">
+                <a-form-item label="算法名称" required>
                   <a-select v-model:value="mpcForm.algorithm" placeholder="选择算法">
                     <a-select-option value="SecureSum">安全求和</a-select-option>
                     <a-select-option value="SecureComparison">安全比较</a-select-option>
@@ -99,84 +130,366 @@
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item label="参与方列表">
+            <a-divider orientation="left" plain>参与方</a-divider>
+            <a-form-item label="参与方列表" required>
               <a-select mode="tags" v-model:value="mpcForm.participants" placeholder="输入参与方ID，按回车确认">
               </a-select>
             </a-form-item>
+            <a-divider />
+            <a-row>
+              <a-col :span="24" style="text-align: right">
+                <a-space>
+                  <a-button @click="handleCancel">取消</a-button>
+                  <a-button @click="handleCreateMpc" :loading="mpcLoading">创建任务</a-button>
+                  <a-button
+                    type="primary"
+                    :disabled="!mpcCreatedTaskId"
+                    :loading="executing"
+                    @click="handleExecuteTask(mpcCreatedTaskId, 'MPC')"
+                  >
+                    执行任务
+                  </a-button>
+                </a-space>
+              </a-col>
+            </a-row>
           </a-form>
         </a-tab-pane>
 
-        <!-- 联邦学习 -->
+        <!-- 联邦学习（横向/纵向合并，下拉切换） -->
         <a-tab-pane key="fl" tab="联邦学习">
-          <a-form :model="flForm" layout="vertical">
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="任务名称">
-                  <a-input v-model:value="flForm.taskName" placeholder="请输入任务名称" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="模型类型">
-                  <a-select v-model:value="flForm.modelType" placeholder="选择模型">
-                    <a-select-option value="LR">逻辑回归 (LR)</a-select-option>
-                    <a-select-option value="NN">神经网络 (NN)</a-select-option>
-                    <a-select-option value="XGB">梯度提升 (XGB)</a-select-option>
-                  </a-select>
-                </a-form-item>
-              </a-col>
-            </a-row>
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="标签列">
-                  <a-input v-model:value="flForm.labelColumn" placeholder="如: label, target" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="特征列">
-                  <a-select mode="tags" v-model:value="flForm.featureColumns" placeholder="输入特征列，按回车确认">
-                  </a-select>
-                </a-form-item>
-              </a-col>
-            </a-row>
-            <a-row :gutter="16">
-              <a-col :span="8">
-                <a-form-item label="参与方">
-                  <a-select mode="tags" v-model:value="flForm.participants" placeholder="输入参与方ID">
-                  </a-select>
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item label="轮次 (Epochs)">
-                  <a-input-number v-model:value="flForm.epochs" :min="1" :max="100" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item label="批量大小">
-                  <a-input-number v-model:value="flForm.batchSize" :min="1" :max="1024" />
-                </a-form-item>
+          <a-form layout="vertical" :style="{ rowGap: '12px' }">
+            <a-card size="small" title="联邦类型" :body-style="{ padding: '12px 16px' }">
+              <a-form-item label="选择联邦类型" required style="max-width: 360px; margin-bottom: 0">
+                <a-select v-model:value="flMode" placeholder="请选择联邦类型" size="large">
+                  <a-select-option value="horizontal">
+                    <span style="font-weight: 500">横向联邦</span>
+                    <span style="color: #999; margin-left: 8px">相同特征 / 不同样本</span>
+                  </a-select-option>
+                  <a-select-option value="vertical">
+                    <span style="font-weight: 500">纵向联邦</span>
+                    <span style="color: #999; margin-left: 8px">相同样本 / 不同特征</span>
+                  </a-select-option>
+                </a-select>
+              </a-form-item>
+            </a-card>
+
+            <a-alert
+              v-if="flMode === 'horizontal'"
+              message="横向联邦：各方拥有相同的特征列、不同的样本数据，适用于跨机构联合建模相同业务场景（如多家医院联合训练疾病预测模型）。"
+              type="info"
+              show-icon
+              style="margin: 8px 0"
+            />
+            <a-alert
+              v-else-if="flMode === 'vertical'"
+              message="纵向联邦：各方拥有相同的样本ID、不同的特征列，适用于联合不同维度的数据训练模型（如银行+电商联合风控建模）。"
+              type="info"
+              show-icon
+              style="margin: 8px 0"
+            />
+
+            <!-- 横向联邦表单 -->
+            <template v-if="flMode === 'horizontal'">
+              <a-form :model="flForm" :style="{ rowGap: '12px' }">
+                <a-row :gutter="16">
+                  <a-col :span="24">
+                    <a-divider orientation="left" plain style="margin: 4px 0 12px">基础信息</a-divider>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="任务名称" required>
+                      <a-input v-model:value="flForm.taskName" placeholder="请输入任务名称" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="模型类型">
+                      <a-select v-model:value="flForm.modelType" placeholder="选择模型">
+                        <a-select-option value="LR">逻辑回归 (LR)</a-select-option>
+                        <a-select-option value="NN">神经网络 (NN)</a-select-option>
+                        <a-select-option value="XGB">梯度提升 (XGB)</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="16">
+                  <a-col :span="24">
+                    <a-divider orientation="left" plain style="margin: 4px 0 12px">数据配置</a-divider>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="标签列" required>
+                      <a-input v-model:value="flForm.labelColumn" placeholder="如: label, target" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="特征列" required>
+                      <a-select mode="tags" v-model:value="flForm.featureColumns" placeholder="输入特征列，按回车确认" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="16">
+                  <a-col :span="24">
+                    <a-divider orientation="left" plain style="margin: 4px 0 12px">训练参数</a-divider>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="参与方" required>
+                      <a-select mode="tags" v-model:value="flForm.participants" placeholder="输入参与方ID" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="轮次 (Epochs)">
+                      <a-input-number v-model:value="flForm.epochs" :min="1" :max="100" style="width: 100%" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="批量大小">
+                      <a-input-number v-model:value="flForm.batchSize" :min="1" :max="1024" style="width: 100%" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="交付模式">
+                      <a-select v-model:value="flForm.deliveryMode" placeholder="选择交付模式">
+                        <a-select-option value="AGGREGATOR_ONLY">聚合方保存模型</a-select-option>
+                        <a-select-option value="ALL_PARTIES">各方保存本地模型</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="学习率">
+                      <a-input-number v-model:value="flForm.learningRate" :min="0.001" :max="1" :step="0.01" style="width: 100%" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+              </a-form>
+            </template>
+
+            <!-- 纵向联邦表单 -->
+            <template v-if="flMode === 'vertical'">
+              <a-form :model="vflForm" :style="{ rowGap: '12px' }">
+                <a-row :gutter="16">
+                  <a-col :span="24">
+                    <a-divider orientation="left" plain style="margin: 4px 0 12px">基础信息</a-divider>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="任务名称" required>
+                      <a-input v-model:value="vflForm.taskName" placeholder="请输入任务名称" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="样本ID列" required>
+                      <a-input v-model:value="vflForm.idColumn" placeholder="如: user_id" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="标签列" required>
+                      <a-input v-model:value="vflForm.labelColumn" placeholder="如: label, target" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="标签拥有方" required>
+                      <a-radio-group v-model:value="vflForm.labelOwner">
+                        <a-radio value="alice">Alice（A方）</a-radio>
+                        <a-radio value="bob">Bob（B方）</a-radio>
+                      </a-radio-group>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="节点模式">
+                      <a-select v-model:value="vflForm.nodeMode">
+                        <a-select-option value="RAY">RAY</a-select-option>
+                        <a-select-option value="KUSCIA">KUSCIA</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-row :gutter="16">
+                  <a-col :span="24">
+                    <a-divider orientation="left" plain style="margin: 4px 0 12px"><span style="font-size: 14px; font-weight: 600">👥 参与方配置</span></a-divider>
+                  </a-col>
+                  <!-- A 方区域 -->
+                  <a-col :span="12">
+                    <a-card size="small" :body-style="{ padding: '12px 16px' }" class="party-card party-card-a">
+                      <template #title>
+                        <span class="party-card-title">
+                          <span class="party-icon">🅰️</span>
+                          <span>A 方（数据提供方）</span>
+                        </span>
+                      </template>
+                      <a-form-item label="A 方节点" required>
+                        <a-select v-model:value="vflForm.partyANodeId" placeholder="选择 A 方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
+                          <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === vflForm.partyBNodeId">
+                            {{ node.nodeName }} ({{ node.nodeMode }})
+                          </a-select-option>
+                        </a-select>
+                      </a-form-item>
+                      <a-form-item label="A 方数据路径" required>
+                        <a-input v-model:value="vflForm.partyADataPath" placeholder="/data/party_a.csv" />
+                      </a-form-item>
+                      <a-form-item label="A 方特征列" required>
+                        <a-select mode="tags" v-model:value="vflForm.partyAFeatureColumns" placeholder="输入特征列，按回车确认" />
+                      </a-form-item>
+                    </a-card>
+                  </a-col>
+                  <!-- B 方区域 -->
+                  <a-col :span="12">
+                    <a-card size="small" :body-style="{ padding: '12px 16px' }" class="party-card party-card-b">
+                      <template #title>
+                        <span class="party-card-title">
+                          <span class="party-icon">🅱️</span>
+                          <span>B 方（数据提供方）</span>
+                        </span>
+                      </template>
+                      <a-form-item label="B 方节点" required>
+                        <a-select v-model:value="vflForm.partyBNodeId" placeholder="选择 B 方节点" show-search :filter-option="filterNodeOption" @change="handleNodeChange">
+                          <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId" :disabled="node.nodeId === vflForm.partyANodeId">
+                            {{ node.nodeName }} ({{ node.nodeMode }})
+                          </a-select-option>
+                        </a-select>
+                      </a-form-item>
+                      <a-form-item label="B 方数据路径" required>
+                        <a-input v-model:value="vflForm.partyBDataPath" placeholder="/data/party_b.csv" />
+                      </a-form-item>
+                      <a-form-item label="B方特征列" required>
+                        <a-select mode="tags" v-model:value="vflForm.partyBFeatureColumns" placeholder="输入特征列，按回车确认" />
+                      </a-form-item>
+                    </a-card>
+                  </a-col>
+                </a-row>
+              </a-form>
+            </template>
+
+            <a-divider />
+            <a-row>
+              <a-col :span="24" style="text-align: right">
+                <a-space>
+                  <a-button @click="handleCancel">取消</a-button>
+                  <a-button
+                    @click="flMode === 'vertical' ? handleCreateVfl() : handleCreateFl()"
+                    :loading="flMode === 'vertical' ? vflLoading : flLoading"
+                  >
+                    创建任务
+                  </a-button>
+                  <a-button
+                    type="primary"
+                    :disabled="!(flMode === 'vertical' ? vflCreatedTaskId : flCreatedTaskId)"
+                    :loading="executing"
+                    @click="handleExecuteTask(flMode === 'vertical' ? vflCreatedTaskId : flCreatedTaskId, flMode === 'vertical' ? '纵向联邦' : '横向联邦')"
+                  >
+                    执行任务
+                  </a-button>
+                </a-space>
               </a-col>
             </a-row>
           </a-form>
         </a-tab-pane>
 
-        <!-- 纵向联邦学习 -->
-        <a-tab-pane key="vfl" tab="纵向联邦学习">
-          <a-form :model="vflForm" layout="vertical">
+        <!-- PIR 隐匿查询 -->
+        <a-tab-pane key="pir" tab="PIR 隐匿查询">
+          <a-form :model="pirForm" layout="vertical">
             <a-row :gutter="16">
-              <a-col :span="12">
+              <a-col :span="8">
                 <a-form-item label="任务名称">
-                  <a-input v-model:value="vflForm.taskName" placeholder="请输入任务名称" />
+                  <a-input v-model:value="pirForm.taskName" placeholder="请输入任务名称" />
                 </a-form-item>
               </a-col>
-              <a-col :span="12">
-                <a-form-item label="标签列">
-                  <a-input v-model:value="vflForm.labelColumn" placeholder="如: label" />
+              <a-col :span="8">
+                <a-form-item label="PIR协议">
+                  <a-select v-model:value="pirForm.pirType" placeholder="选择PIR协议">
+                    <a-select-option value="SealPIR">
+                      <span style="font-weight: 500">SealPIR</span>
+                      <span style="color: #999; margin-left: 8px">Label PIR（取多列值）</span>
+                    </a-select-option>
+                    <a-select-option value="APSI">
+                      <span style="font-weight: 500">APSI</span>
+                      <span style="color: #999; margin-left: 8px">Keyword PIR（是否存在）</span>
+                    </a-select-option>
+                  </a-select>
+                </a-form-item>
+              </a-col>
+              <a-col :span="8">
+                <a-form-item label="节点模式">
+                  <a-select v-model:value="pirForm.nodeMode" placeholder="选择节点模式">
+                    <a-select-option value="RAY">RAY</a-select-option>
+                    <a-select-option value="KUSCIA">KUSCIA</a-select-option>
+                  </a-select>
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-form-item label="参与方特征映射">
-              <a-textarea v-model:value="vflForm.featureMapJson" :rows="4" placeholder='{"party1": ["feat1", "feat2"], "party2": ["feat3"]}' />
-            </a-form-item>
+
+            <a-divider orientation="left" plain><span style="font-size: 14px; font-weight: 600">👥 参与方配置</span></a-divider>
+
+            <a-row :gutter="16">
+              <!-- 服务端 -->
+              <a-col :span="12">
+                <a-card size="small" class="party-card party-card-server">
+                  <template #title>
+                    <span class="party-card-title">
+                      <span class="party-icon">🗄️</span>
+                      <span>服务端（数据提供方）</span>
+                    </span>
+                  </template>
+                  <a-form-item label="服务端节点">
+                    <a-select v-model:value="pirForm.serverNodeId" placeholder="选择服务端节点">
+                      <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId">
+                        {{ node.nodeName }} ({{ node.nodeId }})
+                      </a-select-option>
+                    </a-select>
+                  </a-form-item>
+                  <a-form-item label="数据文件路径">
+                    <a-input v-model:value="pirForm.inputPath" placeholder="/data/data.csv" />
+                  </a-form-item>
+                  <a-form-item label="键列（查询依据）">
+                    <a-input v-model:value="pirForm.keyColumn" placeholder="如: id, email" />
+                  </a-form-item>
+                  <a-form-item label="返回列">
+                    <a-input v-model:value="pirForm.labelColumns" placeholder="如: name,phone,email（逗号分隔）" />
+                  </a-form-item>
+                </a-card>
+              </a-col>
+              <!-- 客户端 -->
+              <a-col :span="12">
+                <a-card size="small" class="party-card party-card-client">
+                  <template #title>
+                    <span class="party-card-title">
+                      <span class="party-icon">🔍</span>
+                      <span>客户端（查询方）</span>
+                    </span>
+                  </template>
+                  <a-form-item label="客户端节点">
+                    <a-select v-model:value="pirForm.clientNodeId" placeholder="选择客户端节点">
+                      <a-select-option v-for="node in onlineNodes" :key="node.nodeId" :value="node.nodeId">
+                        {{ node.nodeName }} ({{ node.nodeId }})
+                      </a-select-option>
+                    </a-select>
+                  </a-form-item>
+                  <a-form-item label="查询值">
+                    <a-input v-model:value="pirForm.queryValue" placeholder="如: test@example.com 或 1" />
+                  </a-form-item>
+                </a-card>
+              </a-col>
+            </a-row>
+
+            <a-row>
+              <a-col :span="24" style="text-align: right">
+                <a-space>
+                  <a-button @click="handleCancel">取消</a-button>
+                  <a-button @click="handleCreatePir" :loading="pirLoading">创建任务</a-button>
+                  <a-button
+                    type="primary"
+                    :disabled="!pirCreatedTaskId"
+                    :loading="executing"
+                    @click="handleExecuteTask(pirCreatedTaskId, 'PIR')"
+                  >
+                    执行任务
+                  </a-button>
+                </a-space>
+              </a-col>
+            </a-row>
           </a-form>
         </a-tab-pane>
 
@@ -309,12 +622,6 @@
           </a-row>
         </a-tab-pane>
       </a-tabs>
-      <div class="create-actions">
-        <a-space>
-          <a-button type="primary" @click="handleCreateTask" :loading="createLoading">创建</a-button>
-          <a-button @click="handleCancel">取消</a-button>
-        </a-space>
-      </div>
     </a-card>
 
     <!-- 预览对话框 -->
@@ -367,42 +674,41 @@ onMounted(() => {
 })
 
 const createType = ref('psi')
-const createLoading = ref(false)
 const psiLoading = ref(false)
 const mpcLoading = ref(false)
 const flLoading = ref(false)
 const vflLoading = ref(false)
+const pirLoading = ref(false)
+const executing = ref(false)  // 通用执行中
+const flMode = ref('horizontal')
 
-const psiResult = ref(null)
-const mpcResult = ref(null)
-const flResult = ref(null)
+// 每个 Tab 当前已创建的任务 ID（点"执行任务"按钮时使用）
+const psiCreatedTaskId = ref('')
+const mpcCreatedTaskId = ref('')
+const flCreatedTaskId = ref('')
+const vflCreatedTaskId = ref('')
+const pirCreatedTaskId = ref('')
 
 const handleCancel = () => {
   router.push('/privacy')
 }
 
-const handleCreateTask = () => {
-  createLoading.value = true
+// 通用：执行已创建的任务
+const handleExecuteTask = async (taskId, label) => {
+  if (!taskId) return
+  executing.value = true
   try {
-    if (createType.value === 'psi') {
-      handleCreatePsi()
-    } else if (createType.value === 'mpc') {
-      handleExecuteMpc()
-    } else if (createType.value === 'fl') {
-      handleExecuteFl()
-    } else if (createType.value === 'vfl') {
-      handleExecuteVfl()
-    } else if (createType.value === 'dag') {
-      showDagSaveModal.value = true
-      return
-    }
+    await axios.post(`/api/dos/privacy/task/${taskId}/execute`)
+    message.success(`${label}任务已启动执行`)
     router.push('/privacy?refresh=1')
+  } catch (error) {
+    message.error('执行失败: ' + (error.response?.data?.msg || error.message || '未知错误'))
   } finally {
-    createLoading.value = false
+    executing.value = false
   }
 }
 
-// 只创建PSI任务，不执行
+// 只创建 PSI 任务
 const handleCreatePsi = async () => {
   if (!psiForm.taskName || !psiForm.partyADataPath || !psiForm.partyBDataPath || !psiForm.keyColumn) {
     message.warning('请填写完整信息')
@@ -416,6 +722,7 @@ const handleCreatePsi = async () => {
     message.warning('A方节点和B方节点不能相同')
     return
   }
+  psiLoading.value = true
   try {
     const createRes = await axios.post('/api/dos/privacy/psi/create', {
       taskName: psiForm.taskName,
@@ -430,77 +737,167 @@ const handleCreatePsi = async () => {
     })
     const taskId = createRes.data.data?.taskId
     if (taskId) {
-      message.success('PSI任务已创建: ' + taskId + '，请到任务列表执行')
+      psiCreatedTaskId.value = taskId
+      message.success('PSI任务已创建: ' + taskId)
     } else {
       message.error('任务创建失败: ' + (createRes.data.msg || '未知错误'))
     }
   } catch (error) {
     message.error('创建失败: ' + (error.message || '未知错误'))
+  } finally {
+    psiLoading.value = false
   }
 }
 
-const handleExecuteMpc = async () => {
+// 只创建 MPC 任务
+const handleCreateMpc = async () => {
   if (!mpcForm.taskName || !mpcForm.algorithm || mpcForm.participants.length === 0) {
     message.warning('请填写完整信息')
     return
   }
   mpcLoading.value = true
   try {
-    const response = await axios.post('/api/dos/privacy/mpc/execute', {
+    const response = await axios.post('/api/dos/privacy/mpc/create', {
       taskName: mpcForm.taskName,
       algorithm: mpcForm.algorithm,
       participants: mpcForm.participants
     })
-    message.success('MPC任务已创建: ' + response.data.data.taskId)
-    mpcResult.value = response.data.data
+    const taskId = response.data.data?.taskId
+    if (taskId) {
+      mpcCreatedTaskId.value = taskId
+      message.success('MPC任务已创建: ' + taskId)
+    } else {
+      message.error('任务创建失败: ' + (response.data.msg || '未知错误'))
+    }
   } catch (error) {
-    message.error('执行失败: ' + (error.message || '未知错误'))
+    message.error('创建失败: ' + (error.message || '未知错误'))
   } finally {
     mpcLoading.value = false
   }
 }
 
-const handleExecuteFl = async () => {
+// 只创建 PIR 任务
+const handleCreatePir = async () => {
+  if (!pirForm.serverNodeId || !pirForm.clientNodeId) {
+    message.warning('请选择服务端和客户端节点')
+    return
+  }
+  if (!pirForm.inputPath || !pirForm.keyColumn || !pirForm.labelColumns) {
+    message.warning('请填写数据配置信息')
+    return
+  }
+  if (!pirForm.queryValue) {
+    message.warning('请填写查询值')
+    return
+  }
+  pirLoading.value = true
+  try {
+    const response = await axios.post('/api/dos/privacy/pir/create', {
+      taskName: pirForm.taskName || 'PIR-' + Date.now(),
+      serverNodeId: pirForm.serverNodeId,
+      clientNodeId: pirForm.clientNodeId,
+      inputPath: pirForm.inputPath,
+      keyColumn: pirForm.keyColumn,
+      labelColumns: pirForm.labelColumns,
+      queryValue: pirForm.queryValue,
+      pirType: pirForm.pirType,
+      nodeMode: pirForm.nodeMode
+    })
+    const taskId = response.data.data?.taskId
+    if (taskId) {
+      pirCreatedTaskId.value = taskId
+      message.success('PIR任务已创建: ' + taskId)
+    } else {
+      message.error('任务创建失败: ' + (response.data.msg || '未知错误'))
+    }
+  } catch (error) {
+    message.error('创建失败: ' + (error.message || '未知错误'))
+  } finally {
+    pirLoading.value = false
+  }
+}
+
+// 只创建横向联邦任务
+const handleCreateFl = async () => {
   if (!flForm.taskName || !flForm.labelColumn || flForm.participants.length === 0) {
     message.warning('请填写完整信息')
     return
   }
   flLoading.value = true
   try {
-    const response = await axios.post('/api/dos/privacy/fl/execute', {
+    const response = await axios.post('/api/dos/privacy/fl/create', {
       taskName: flForm.taskName,
       labelColumn: flForm.labelColumn,
       featureColumns: flForm.featureColumns,
       participants: flForm.participants,
       modelType: flForm.modelType,
       epochs: flForm.epochs,
-      batchSize: flForm.batchSize
+      batchSize: flForm.batchSize,
+      deliveryMode: flForm.deliveryMode,
+      learningRate: flForm.learningRate
     })
-    message.success('联邦学习任务已创建: ' + response.data.data.taskId)
-    flResult.value = response.data.data
+    const taskId = response.data.data?.taskId
+    if (taskId) {
+      flCreatedTaskId.value = taskId
+      message.success('横向联邦任务已创建: ' + taskId)
+    } else {
+      message.error('任务创建失败: ' + (response.data.msg || '未知错误'))
+    }
   } catch (error) {
-    message.error('执行失败: ' + (error.message || '未知错误'))
+    message.error('创建失败: ' + (error.message || '未知错误'))
   } finally {
     flLoading.value = false
   }
 }
 
-const handleExecuteVfl = async () => {
-  if (!vflForm.taskName || !vflForm.labelColumn) {
-    message.warning('请填写完整信息')
+// 只创建纵向联邦任务
+const handleCreateVfl = async () => {
+  if (!vflForm.taskName || !vflForm.labelColumn || !vflForm.idColumn) {
+    message.warning('请填写完整信息（任务名称/标签列/样本ID列）')
+    return
+  }
+  if (!vflForm.partyANodeId || !vflForm.partyBNodeId) {
+    message.warning('请选择A方和B方节点')
+    return
+  }
+  if (vflForm.partyANodeId === vflForm.partyBNodeId) {
+    message.warning('A方节点和B方节点不能相同')
+    return
+  }
+  if (!vflForm.partyADataPath || !vflForm.partyBDataPath) {
+    message.warning('请填写A方和B方数据路径')
+    return
+  }
+  if (!vflForm.partyAFeatureColumns?.length || !vflForm.partyBFeatureColumns?.length) {
+    message.warning('请填写A方和B方特征列')
     return
   }
   vflLoading.value = true
   try {
-    const featureMap = JSON.parse(vflForm.featureMapJson || '{}')
-    const response = await axios.post('/api/dos/privacy/vfl/execute', {
+    const response = await axios.post('/api/dos/privacy/vfl/create', {
       taskName: vflForm.taskName,
       labelColumn: vflForm.labelColumn,
-      featureColumns: featureMap
+      idColumn: vflForm.idColumn,
+      labelOwner: vflForm.labelOwner,
+      nodeMode: vflForm.nodeMode,
+      partyANodeId: vflForm.partyANodeId,
+      partyBNodeId: vflForm.partyBNodeId,
+      partyADataPath: vflForm.partyADataPath,
+      partyBDataPath: vflForm.partyBDataPath,
+      featureColumns: {
+        alice: vflForm.partyAFeatureColumns,
+        bob: vflForm.partyBFeatureColumns
+      }
     })
-    message.success('纵向联邦学习任务已创建: ' + response.data.data.taskId)
+    const taskId = response.data.data?.taskId
+    if (taskId) {
+      vflCreatedTaskId.value = taskId
+      message.success('纵向联邦任务已创建: ' + taskId)
+    } else {
+      message.error('任务创建失败: ' + (response.data.msg || '未知错误'))
+    }
   } catch (error) {
-    message.error('执行失败: ' + (error.message || '未知错误'))
+    message.error('创建失败: ' + (error.message || '未知错误'))
   } finally {
     vflLoading.value = false
   }
@@ -811,17 +1208,103 @@ const flForm = reactive({
   featureColumns: [],
   participants: [],
   epochs: 10,
-  batchSize: 32
+  batchSize: 32,
+  deliveryMode: 'AGGREGATOR_ONLY',
+  learningRate: 0.01
 })
 
 const vflForm = reactive({
   taskName: '',
+  idColumn: '',
   labelColumn: '',
-  featureMapJson: ''
+  labelOwner: 'alice',
+  nodeMode: 'RAY',
+  partyANodeId: undefined,
+  partyADataPath: '',
+  partyAFeatureColumns: [],
+  partyBNodeId: undefined,
+  partyBDataPath: '',
+  partyBFeatureColumns: []
+})
+
+const pirForm = reactive({
+  taskName: '',
+  nodeMode: 'RAY',
+  pirType: 'SealPIR',
+  serverNodeId: '',
+  clientNodeId: '',
+  inputPath: '/data/data.csv',
+  keyColumn: 'id',
+  labelColumns: 'name,phone,email',
+  queryValue: ''
 })
 </script>
 
 <style scoped>
+/* 参与方分组卡片样式 */
+.party-card {
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.party-card :deep(.ant-card-head) {
+  min-height: 44px;
+  padding: 0 14px;
+  border-bottom: 2px solid transparent;
+}
+.party-card :deep(.ant-card-head-title) {
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.party-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.party-icon {
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: white;
+}
+/* A 方：蓝色 */
+.party-card-a :deep(.ant-card-head) {
+  background: #e6f4ff;
+  border-bottom-color: #91caff;
+}
+.party-card-a .party-icon {
+  background: #1677ff;
+}
+/* B 方：紫色 */
+.party-card-b :deep(.ant-card-head) {
+  background: #f9f0ff;
+  border-bottom-color: #d3adf7;
+}
+.party-card-b .party-icon {
+  background: #722ed1;
+}
+/* 服务端：青色 */
+.party-card-server :deep(.ant-card-head) {
+  background: #e6fffb;
+  border-bottom-color: #87e8de;
+}
+.party-card-server .party-icon {
+  background: #13c2c2;
+}
+/* 客户端：橙色 */
+.party-card-client :deep(.ant-card-head) {
+  background: #fff7e6;
+  border-bottom-color: #ffd591;
+}
+.party-card-client .party-icon {
+  background: #fa8c16;
+}
+
 /* DAG 样式 */
 .component-item {
   padding: 8px 12px;

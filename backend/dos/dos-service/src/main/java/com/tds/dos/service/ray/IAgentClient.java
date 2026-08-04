@@ -71,6 +71,14 @@ public interface IAgentClient {
     byte[] downloadTaskFile(String agentEndpoint, String jobId, String filePath);
 
     /**
+     * 直接下载节点上的文件（旁路，不依赖 jobId 鉴权）
+     * @param agentEndpoint Agent HTTP地址
+     * @param filePath 节点上文件绝对路径
+     * @return 文件字节内容
+     */
+    byte[] downloadNodeFile(String agentEndpoint, String filePath);
+
+    /**
      * Ray状态信息
      */
     class RayStatus {

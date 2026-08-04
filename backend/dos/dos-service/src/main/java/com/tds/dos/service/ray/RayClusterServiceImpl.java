@@ -105,27 +105,36 @@ public class RayClusterServiceImpl implements IRayClusterService {
         headNode.setfUpdateTime(LocalDateTime.now());
         nodeMapper.updateById(headNode);
 
-        // 6. 启动Worker节点
+        // 6. 启动Worker节点（PSI/FL/VFL任务不需要Worker，仍尝试启动但失败不阻断主流程）
+        boolean allWorkersStarted = true;
         for (int i = 1; i < nodes.size(); i++) {
             TbNode workerNode = nodes.get(i);
             int workerPort = workerNode.getfRayPort() != null ? workerNode.getfRayPort() : 6379;
 
             log.info("Starting worker {} on node {}, head={}", i, workerNode.getfNodeId(), headAddress);
-            String workerRayAddress = agentClient.startWorker(workerNode.getfEndpoint(), headAddress, workerPort);
-            if (workerRayAddress != null) {
-                workerNode.setfRayStatus("RUNNING");
-                workerNode.setfRayEndpoint(workerRayAddress);  // 使用Worker自己的Ray地址
-                workerNode.setfUpdateTime(LocalDateTime.now());
-                nodeMapper.updateById(workerNode);
-                log.info("Worker {} started successfully, ray address: {}", workerNode.getfNodeId(), workerRayAddress);
-            } else {
-                log.error("Failed to start Worker on node {}, cluster {} is incomplete!", workerNode.getfNodeId(), clusterId);
-                // 更新集群状态为不完整
-                cluster.setfStatus("PARTIAL");
-                cluster.setfUpdateTime(LocalDateTime.now());
-                clusterMapper.updateById(cluster);
-                throw new RuntimeException("Failed to start Worker on node " + workerNode.getfNodeId() + ". Cluster " + clusterId + " is incomplete.");
+            try {
+                String workerRayAddress = agentClient.startWorker(workerNode.getfEndpoint(), headAddress, workerPort);
+                if (workerRayAddress != null) {
+                    workerNode.setfRayStatus("RUNNING");
+                    workerNode.setfRayEndpoint(workerRayAddress);
+                    workerNode.setfUpdateTime(LocalDateTime.now());
+                    nodeMapper.updateById(workerNode);
+                    log.info("Worker {} started successfully, ray address: {}", workerNode.getfNodeId(), workerRayAddress);
+                } else {
+                    log.warn("Worker {} start returned null, marking as incomplete", workerNode.getfNodeId());
+                    allWorkersStarted = false;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to start Worker on node {}: {}, marking as incomplete", workerNode.getfNodeId(), e.getMessage());
+                allWorkersStarted = false;
             }
+        }
+
+        if (!allWorkersStarted) {
+            cluster.setfStatus("PARTIAL");
+            cluster.setfUpdateTime(LocalDateTime.now());
+            clusterMapper.updateById(cluster);
+            log.warn("Ray cluster {} created with partial workers, head={}", clusterId, headAddress);
         }
 
         log.info("Created Ray cluster {}, head: {}, participants: {}", clusterId, headAddress, nodeIds);

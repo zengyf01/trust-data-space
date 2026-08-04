@@ -28,7 +28,7 @@ public class CodeGeneratorFactory {
 
     /**
      * 根据任务类型获取代码生成器
-     * @param taskType 任务类型，如 "PSI", "MPC", "FEDERATED_LEARNING"
+     * @param taskType 任务类型，如 "PSI", "MPC", "HORIZONTAL_FL"
      * @return 对应的代码生成器
      * @throws IllegalArgumentException 如果没有找到对应类型的生成器
      */

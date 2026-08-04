@@ -76,7 +76,7 @@ const getStatusText = (status) => {
   return texts[status] || '未知'
 }
 const getTypeText = (type) => {
-  const texts = { 1: 'PSI', 2: 'MPC', 3: '联邦学习', 4: '自定义', 5: '纵向联邦', 6: '复合任务' }
+  const texts = { 1: 'PSI', 2: 'MPC', 3: '横向联邦', 4: '自定义', 5: '纵向联邦', 6: '复合任务' }
   return texts[type] || '未知'
 }
 

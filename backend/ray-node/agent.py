@@ -77,19 +77,17 @@ def start_head():
         time.sleep(1)
 
         # 启动Ray Head
-        # Ray 2.x: --port 设置 client_server 端口，--gcs-server-port 设置 gcs_server 端口
-        # worker_ports 不能与 gcs_server_port 和 client_server_port 冲突
+        # Ray 2.2.0: --port 设置 GCS 端口，--ray-client-server-port 设置客户端端口
+        # 必须显式设置所有端口避免冲突: GCS=6379, dashboard=10000, client_server=10001, worker=10002+
         gcs_server_port = ray_port
-        client_server_port = ray_port + 1  # 与 gcs_server_port 错开
-        # worker_port_start 从 ray_port + 2 开始，避免冲突
-        worker_port_start = ray_port + 2
         cmd = [
             'ray', 'start', '--head',
-            '--port', str(client_server_port),
-            '--gcs-server-port', str(gcs_server_port),
+            '--port', str(gcs_server_port),
+            '--ray-client-server-port', '10001',
             '--node-ip-address', host_ip,
-            '--min-worker-port', str(worker_port_start),
-            '--max-worker-port', '19999',
+            '--dashboard-port', '11000',
+            '--min-worker-port', '20001',
+            '--max-worker-port', '29999',
             '--disable-usage-stats'
         ]
 
@@ -158,21 +156,12 @@ def start_worker():
             return jsonify({'code': 500, 'data': None, 'msg': '无法获取本机IP'}), 200
 
         # 启动Ray Worker
-        # head_address格式是 ray://172.168.1.1:10001，需要转换为GCS端口 172.168.1.1:10002
-        # Ray 2.x 客户端端口=10001，GCS端口=10002，Worker需要连接GCS端口
+        # head_address 格式是 ray://172.168.1.1:6379，直接使用传入的地址（这是 GCS 端口）
+        # Ray 2.x Worker 需要连接 Head 的 GCS 端口
         worker_address = head_address
         if worker_address.startswith('ray://'):
             worker_address = worker_address[6:]  # 跳过 ray:// 前缀
-            # Ray 2.x: 客户端端口是 GCS端口+1，改为直接连接 GCS 端口
-            parts = worker_address.rsplit(':', 1)
-            if len(parts) == 2:
-                try:
-                    client_port = int(parts[1])
-                    gcs_port = client_port + 1  # 10001 → 10002
-                    worker_address = f"{parts[0]}:{gcs_port}"
-                    logger.info(f'转换Worker连接地址: {head_address} → {worker_address} (GCS端口)')
-                except ValueError:
-                    pass  # 端口不是数字，保持原样
+            logger.info(f'Worker连接地址: {worker_address}')
 
         cmd = [
             'ray', 'start', '--address', worker_address,
@@ -401,6 +390,36 @@ def get_task_file():
         })
     except Exception as e:
         logger.error(f'文件下载失败: {e}')
+        return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
+
+
+@app.route('/agent/file/download', methods=['GET'])
+def download_file():
+    """直接下载节点上的文件，不依赖 jobId 鉴权。
+
+    用于 FL/VFL 任务产生的模型文件下载（jobId 可能已从 state.tasks 中过期）。
+    安全策略：仅允许 /tmp/ 下的普通文件，禁止路径穿越与符号链接。
+    """
+    try:
+        file_path = request.args.get('path', '')
+        if not file_path:
+            return jsonify({'code': 400, 'data': None, 'msg': 'path 必填'}), 200
+
+        # 路径安全检查
+        real_path = os.path.realpath(file_path)
+        if not real_path.startswith('/tmp/'):
+            return jsonify({'code': 403, 'data': None, 'msg': '仅允许访问 /tmp/ 下的文件'}), 200
+        if not os.path.isfile(real_path):
+            return jsonify({'code': 404, 'data': None, 'msg': '文件不存在: ' + file_path}), 200
+
+        with open(real_path, 'rb') as f:
+            content = f.read()
+        logger.info(f'文件下载(旁路): path={file_path}, bytes={len(content)}')
+        return Response(content, mimetype='application/octet-stream', headers={
+            'Content-Disposition': f'attachment; filename="{os.path.basename(real_path)}"'
+        })
+    except Exception as e:
+        logger.error(f'文件下载(旁路)失败: {e}')
         return jsonify({'code': 500, 'data': None, 'msg': str(e)}), 200
 
 

@@ -280,6 +280,40 @@ public class AgentClientImpl implements IAgentClient {
         }
     }
 
+    @Override
+    public byte[] downloadNodeFile(String agentEndpoint, String filePath) {
+        try {
+            String encodedPath = java.net.URLEncoder.encode(filePath, java.nio.charset.StandardCharsets.UTF_8);
+            String url = agentEndpoint + "/agent/file/download?path=" + encodedPath;
+
+            HttpResponse<byte[]> response = httpClient.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .GET()
+                    .timeout(Duration.ofMillis(timeout))
+                    .build(),
+                HttpResponse.BodyHandlers.ofByteArray()
+            );
+
+            if (response.statusCode() != 200) {
+                String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
+                log.error("旁路下载失败: agent={}, path={}, status={}, body={}", agentEndpoint, filePath, response.statusCode(), body);
+                throw new RuntimeException("Agent 拒绝下载: HTTP " + response.statusCode() + " - " + body);
+            }
+            // Agent 业务失败时返回 JSON
+            String contentType = response.headers().firstValue("Content-Type").orElse("");
+            if (contentType.contains("application/json")) {
+                String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
+                throw new RuntimeException("Agent 拒绝下载: " + body);
+            }
+            log.info("旁路下载成功: agent={}, path={}, bytes={}", agentEndpoint, filePath, response.body().length);
+            return response.body();
+        } catch (Exception e) {
+            log.error("旁路下载失败: {} from {}: {}", filePath, agentEndpoint, e.getMessage());
+            throw new RuntimeException("旁路下载失败: " + e.getMessage(), e);
+        }
+    }
+
     /**
      * Agent业务失败时同样返回HTTP 200，需要检查响应体里的code
      */

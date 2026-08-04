@@ -1,0 +1,92 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api/dos
+
+spring:
+  application:
+    name: dos-api
+  cloud:
+    compatibility-verifier:
+      enabled: false
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:redis}
+      port: ${SPRING_REDIS_PORT:6379}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+  datasource:
+    dynamic:
+      primary: dos
+      strict: false
+      datasource:
+        dos:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://dos-mysql:3306/dos?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          username: root
+          password: ${SPRING_DATASOURCE_PASSWORD}
+          hikari:
+            maximum-pool-size: 10
+            minimum-idle: 5
+            connection-timeout: 30000
+        msp:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://dos-mysql:3306/dos?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          username: root
+          password: ${SPRING_DATASOURCE_PASSWORD}
+          hikari:
+            maximum-pool-size: 10
+            minimum-idle: 5
+            connection-timeout: 30000
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.tds.dos.dal.entity
+  global-config:
+    db-config:
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 文件存储配置
+file:
+  storage:
+    path: /var/data/dos/files
+  max:
+    size: 104857600  # 100MB
+
+# 数据服务配置
+dataservice:
+  http:
+    timeout: 60000
+  sftp:
+    timeout: 30000
+
+# API代理配置
+api:
+  proxy:
+    timeout: 30000
+    connect:
+      timeout: 10000
+
+# Ray 集群配置
+ray:
+  # Ray Head 节点的 Ray 协议地址（用于 sf.init 连接）
+  # 注意：节点动态注册后，真实地址从节点表的 f_ray_endpoint 字段获取
+  address: ${RAY_ADDRESS:ray://ray-head:10001}
+
+logging:
+  level:
+    com.tds: DEBUG
+    org.springframework: INFO

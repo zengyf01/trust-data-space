@@ -10,7 +10,7 @@ public interface ICodeGenerator {
 
     /**
      * 获取支持的任务类型
-     * @return 任务类型标识，如 "PSI", "MPC", "FEDERATED_LEARNING"
+     * @return 任务类型标识，如 "PSI", "MPC", "HORIZONTAL_FL"
      */
     String getTaskType();
 

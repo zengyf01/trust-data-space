@@ -59,6 +59,7 @@ public class TaskServiceImpl implements ITaskService {
         task.setfDescription(dto.getDescription());
         task.setfCreateTime(LocalDateTime.now());
         task.setfUpdateTime(LocalDateTime.now());
+        task.setfDeleteMark(0);  // 显式设置 @TableLogic 字段默认值
 
         if (dto.getParticipants() != null) {
             task.setfParticipants(String.join(",", dto.getParticipants()));

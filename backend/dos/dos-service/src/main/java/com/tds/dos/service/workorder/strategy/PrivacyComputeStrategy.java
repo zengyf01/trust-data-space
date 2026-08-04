@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 隐私计算策略 - 集成MSP (SecretFlow PSI求交、联邦学习)
+ * 隐私计算策略 - 集成MSP (SecretFlow PSI求交、横向联邦)
  */
 @Slf4j
 @Service
@@ -96,7 +96,7 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
             } else if ("MPC".equalsIgnoreCase(computeType)) {
                 taskType = TaskType.MPC;
             } else if ("FEDERATED_LEARNING".equalsIgnoreCase(computeType)) {
-                taskType = TaskType.FEDERATED_LEARNING;
+                taskType = TaskType.HORIZONTAL_FL;
             } else if ("VERTICAL_FL".equalsIgnoreCase(computeType)) {
                 taskType = TaskType.VERTICAL_FL;
             } else {
@@ -148,15 +148,7 @@ public class PrivacyComputeStrategy implements WorkOrderStrategy {
             String taskId = taskService.createTask(taskDTO);
 
             // PSI 任务不再自行建集群/提交，统一由 PsiTaskExecutor 接管
-            // FL/VERTICAL_FL 暂未实现：FlCodeGenerator 用的 SecretFlow API（FLModel/SecureAggregator）
-            // 没有实测验证，且 FlTaskExecutor 是 fire-and-forget 假成功。
-            // 这里直接抛错，让工单在 preProcess 阶段快速失败。
-            if (taskType == TaskType.FEDERATED_LEARNING || taskType == TaskType.VERTICAL_FL) {
-                if (clusterId != null) {
-                    try { rayClusterService.destroyCluster(clusterId); } catch (Exception ignore) {}
-                }
-                throw new RuntimeException("联邦学习 / 纵向联邦学习暂未实现（FlTaskExecutor 是 stub 且 FlCodeGenerator 已删除）。请改用 PSI 求交（computeType=PSI）。");
-            }
+            // FL/VFL 已实现，由对应 TaskExecutor 接管
 
             // 保存任务ID和集群ID到工单结果
             Map<String, Object> result = new HashMap<>();

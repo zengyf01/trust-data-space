@@ -137,7 +137,7 @@ trust-data-space/
 ### 三种交付类型
 - **数据服务**：SFTP / HTTP / 数据库同步
 - **安全沙盒**：Kata容器 + TEE运行时 + JupyterLab
-- **隐私计算**：SecretFlow PSI求交 / 联邦学习
+- **隐私计算**：SecretFlow PSI求交 / 横向联邦 / 纵向联邦
 
 ### 认证方式
 - **MaxKey SSO**：统一身份认证
@@ -403,7 +403,7 @@ spec:
 | **工单策略** | DataServiceStrategy/SandboxStrategy/PrivacyComputeStrategy | 策略模式执行 | ✅已完成 |
 | **数据服务** | SFTP交付、HTTP推送、交付API代理 | 数据交付 | ✅已完成 |
 | **安全沙盒** | 沙盒创建/销毁/停止、Pod状态/日志/事件、JupyterLab | Kata+TEE | ✅已完成 |
-| **隐私计算** | 开发环境创建、作业部署/销毁、PSI求交、联邦学习 | SecretFlow | ✅已完成 |
+| **隐私计算** | 开发环境创建、作业部署/销毁、PSI求交、横向联邦、纵向联邦 | SecretFlow | ✅已完成 |
 | **认证接口** | MaxKey登录、SSO认证、登出 | 用户认证 | ✅已完成 |
 
 ### 连接器 (Datar)
@@ -455,3 +455,40 @@ spec:
 | **P0** | 核心功能，必须实现，系统可用 |
 | **P1** | 重要功能，计划实现，增强体验 |
 | **P2** | 扩展功能，适时实现 |
+
+## 本地开发注意事项
+
+### Docker 环境问题
+
+**问题描述**：`which docker` 找不到 Docker 命令，即使 Docker Desktop 已启动。
+
+**根本原因**：Docker 工具（docker.exe, docker-compose.exe）位于 `C:\Program Files\Docker\Docker\resources\bin\` 目录下，不在系统 PATH 环境变量中。
+
+**解决方案**：使用完整路径调用 Docker 命令：
+
+```bash
+# Docker 工具路径
+DOCKER_BIN="/c/Program Files/Docker/Docker/resources/bin"
+
+# 使用完整路径执行 docker 命令
+"$DOCKER_BIN/docker.exe" version
+"$DOCKER_BIN/docker-compose.exe" build ray-node-1
+"$DOCKER_BIN/docker-compose.exe" up -d ray-node-1
+
+# 或临时添加到 PATH
+export PATH="$PATH:/c/Program Files/Docker/Docker/resources/bin"
+docker version
+```
+
+**常用 Docker 命令（使用完整路径）**：
+
+```bash
+# 构建镜像
+"/c/Program Files/Docker/Docker/resources/bin/docker-compose.exe" -f docker-compose.yml build ray-node-1 ray-node-2
+
+# 重启容器
+"/c/Program Files/Docker/Docker/resources/bin/docker-compose.exe" -f docker-compose.yml up -d ray-node-1 ray-node-2
+
+# 查看日志
+"/c/Program Files/Docker/Docker/resources/bin/docker-compose.exe" -f docker-compose.yml logs -f ray-node-1 ray-node-2
+```

@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * 隐私计算管理接口
- * 提供 PSI、MPC、联邦学习等隐私计算任务的REST API
+ * 提供 PSI、MPC、横向联邦等隐私计算任务的REST API
  */
 @RestController
 @RequestMapping("/privacy")
@@ -85,7 +85,10 @@ public class PrivacyComputeController {
     @GetMapping("/task/{taskId}/result")
     public ApiResponse<?> getTaskResult(@PathVariable String taskId) {
         String result = privacyComputeService.getTaskResult(taskId);
-        return ApiResponse.success(Map.of("taskId", taskId, "result", result));
+        Map<String, Object> data = new HashMap<>();
+        data.put("taskId", taskId);
+        data.put("result", result);  // 任务未完成时 result=null
+        return ApiResponse.success(data);
     }
 
     /**
@@ -141,6 +144,21 @@ public class PrivacyComputeController {
             org.springframework.http.HttpStatus.OK);
     }
 
+    /**
+     * 下载 FL/VFL 任务一方的模型文件
+     */
+    @GetMapping("/model/{taskId}/download")
+    public org.springframework.http.ResponseEntity<byte[]> downloadModel(
+            @PathVariable String taskId,
+            @RequestParam(defaultValue = "alice") String party) {
+        byte[] data = privacyComputeService.downloadModelFile(taskId, party);
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.parseMediaType("application/octet-stream"));
+        headers.setContentDispositionFormData("attachment", "model_" + taskId + "_" + party + ".pkl");
+        return new org.springframework.http.ResponseEntity<>(data, headers,
+            org.springframework.http.HttpStatus.OK);
+    }
+
     // ==================== PSI 求交 ====================
 
     /**
@@ -170,6 +188,7 @@ public class PrivacyComputeController {
 
         // 构建任务参数
         Map<String, Object> taskParams = new HashMap<>();
+        taskParams.put("taskName", taskName);
         taskParams.put("protocol", protocol);
         taskParams.put("resultType", resultType);
         taskParams.put("nodeMode", nodeMode);
@@ -229,54 +248,117 @@ public class PrivacyComputeController {
         return ApiResponse.success(result);
     }
 
+    // ==================== PIR 隐匿查询 ====================
+
+    /**
+     * 创建 PIR 任务（只创建，不执行）
+     */
+    @PostMapping("/pir/create")
+    public ApiResponse<?> createPir(@RequestBody Map<String, Object> params) {
+        String taskName = (String) params.get("taskName");
+        String serverNodeId = (String) params.get("serverNodeId");
+        String clientNodeId = (String) params.get("clientNodeId");
+        String inputPath = (String) params.get("inputPath");
+        String keyColumn = (String) params.get("keyColumn");
+        String labelColumns = (String) params.get("labelColumns");
+        String queryValue = (String) params.get("queryValue");
+        String pirType = (String) params.getOrDefault("pirType", "SealPIR");
+
+        if (serverNodeId == null || clientNodeId == null) {
+            return ApiResponse.error("serverNodeId 和 clientNodeId 不能为空");
+        }
+        if (inputPath == null || keyColumn == null) {
+            return ApiResponse.error("inputPath、keyColumn 不能为空");
+        }
+        if (queryValue == null) {
+            return ApiResponse.error("queryValue 不能为空");
+        }
+
+        Map<String, Object> taskParams = new java.util.HashMap<>();
+        taskParams.put("taskName", taskName);
+        taskParams.put("serverNodeId", serverNodeId);
+        taskParams.put("clientNodeId", clientNodeId);
+        taskParams.put("inputPath", inputPath);
+        taskParams.put("keyColumn", keyColumn);
+        taskParams.put("labelColumns", labelColumns);
+        taskParams.put("queryValue", queryValue);
+        taskParams.put("pirType", pirType);
+        taskParams.put("nodeMode", params.getOrDefault("nodeMode", "RAY"));
+
+        String taskId = privacyComputeService.createPirTask(taskParams);
+
+        return ApiResponse.success(Map.of(
+            "taskId", taskId,
+            "computeType", "PIR",
+            "pirType", pirType,
+            "status", "CREATED"
+        ));
+    }
+
     // ==================== MPC 多方计算 ====================
 
     /**
-     * 执行 MPC 任务
+     * 创建 MPC 任务（只创建，不执行）
      */
-    @PostMapping("/mpc/execute")
-    public ApiResponse<?> executeMpc(@RequestBody Map<String, Object> params) {
+    @PostMapping("/mpc/create")
+    public ApiResponse<?> createMpc(@RequestBody Map<String, Object> params) {
         String taskName = (String) params.get("taskName");
         List<String> participants = (List<String>) params.get("participants");
         String algorithm = (String) params.get("algorithm");
 
-        String taskId = privacyComputeService.executeMpcTask(taskName, participants, algorithm, params);
+        // 把 taskName 放进 params 让 service 透传
+        if (taskName != null) params.put("name", taskName);
+        String taskId = privacyComputeService.createMpcTask(taskName, participants, algorithm, params);
 
-        return ApiResponse.success(Map.of("taskId", taskId, "computeType", "MPC"));
+        return ApiResponse.success(Map.of(
+            "taskId", taskId,
+            "computeType", "MPC",
+            "status", "CREATED"
+        ));
     }
 
-    // ==================== 联邦学习 ====================
+    // ==================== 横向联邦 ====================
 
     /**
-     * 执行联邦学习任务
+     * 创建横向联邦任务（只创建，不执行）
      */
-    @PostMapping("/fl/execute")
-    public ApiResponse<?> executeFederatedLearning(@RequestBody Map<String, Object> params) {
+    @PostMapping("/fl/create")
+    public ApiResponse<?> createFederatedLearning(@RequestBody Map<String, Object> params) {
         String taskName = (String) params.get("taskName");
         List<String> participants = (List<String>) params.get("participants");
         String labelColumn = (String) params.get("labelColumn");
         List<String> featureColumns = (List<String>) params.get("featureColumns");
 
-        String taskId = privacyComputeService.executeFederatedLearningTask(
+        if (taskName != null) params.put("name", taskName);
+        String taskId = privacyComputeService.createFederatedLearningTask(
             taskName, participants, labelColumn, featureColumns, params);
 
-        return ApiResponse.success(Map.of("taskId", taskId, "computeType", "FEDERATED_LEARNING"));
+        return ApiResponse.success(Map.of(
+            "taskId", taskId,
+            "computeType", "FL",
+            "status", "CREATED"
+        ));
     }
 
     /**
-     * 执行纵向联邦学习任务
+     * 创建纵向联邦学习任务（只创建，不执行）
      */
-    @PostMapping("/vfl/execute")
-    public ApiResponse<?> executeVerticalFl(@RequestBody Map<String, Object> params) {
+    @PostMapping("/vfl/create")
+    public ApiResponse<?> createVerticalFl(@RequestBody Map<String, Object> params) {
         String taskName = (String) params.get("taskName");
         List<String> participants = (List<String>) params.get("participants");
         String labelColumn = (String) params.get("labelColumn");
         Map<String, List<String>> featureColumns = (Map<String, List<String>>) params.get("featureColumns");
 
-        String taskId = privacyComputeService.executeVerticalFlTask(
+        if (taskName != null) params.put("name", taskName);
+        String taskId = privacyComputeService.createVerticalFlTask(
             taskName, participants, labelColumn, featureColumns, params);
 
-        return ApiResponse.success(Map.of("taskId", taskId, "computeType", "VERTICAL_FL"));
+        return ApiResponse.success(Map.of(
+            "taskId", taskId,
+            "computeType", "VERTICAL_FL",
+            "status", "CREATED"
+        ));
     }
 
     // ==================== DAG 任务 ====================

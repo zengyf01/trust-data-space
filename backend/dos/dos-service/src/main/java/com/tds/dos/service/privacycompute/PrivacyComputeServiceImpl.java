@@ -69,9 +69,11 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
         } else if ("MPC".equalsIgnoreCase(computeType)) {
             taskType = TaskType.MPC;
         } else if ("FEDERATED_LEARNING".equalsIgnoreCase(computeType)) {
-            taskType = TaskType.FEDERATED_LEARNING;
+            taskType = TaskType.HORIZONTAL_FL;
         } else if ("VERTICAL_FL".equalsIgnoreCase(computeType)) {
             taskType = TaskType.VERTICAL_FL;
+        } else if ("PIR".equalsIgnoreCase(computeType)) {
+            taskType = TaskType.PIR;
         }
         taskDTO.setType(taskType);
 
@@ -212,7 +214,74 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
             throw new RuntimeException("节点未找到或未注册端点: " + partyNodeId);
         }
 
-        return agentClient.downloadTaskFile(node.getfEndpoint(), jobId, outputPath);
+        // 用旁路端点下载，不依赖 Ray 集群和 jobId 鉴权
+        // outputPath 是 Agent 本地文件系统路径，Ray 集群停止后仍可访问
+        return agentClient.downloadNodeFile(node.getfEndpoint(), outputPath);
+    }
+
+    @Override
+    public byte[] downloadModelFile(String taskId, String party) {
+        if (!"alice".equalsIgnoreCase(party) && !"bob".equalsIgnoreCase(party)) {
+            throw new IllegalArgumentException("party 只能是 alice 或 bob，当前值: " + party);
+        }
+        String normalized = party.toLowerCase();
+
+        TbTask task = taskService.getTask(taskId);
+        if (task == null) {
+            throw new RuntimeException("任务不存在: " + taskId);
+        }
+        if (task.getfResult() == null || task.getfResult().isEmpty()) {
+            throw new RuntimeException("任务尚未产生结果，请等待完成后再下载");
+        }
+
+        String modelPath;
+        String jobId = null;
+        try {
+            Map<String, Object> result = objectMapper.readValue(task.getfResult(), Map.class);
+            Map<String, Object> partyInfo = (Map<String, Object>) result.get("party_" + normalized);
+            if (partyInfo == null) {
+                throw new RuntimeException("任务结果中没有 party=" + normalized + " 的信息");
+            }
+            Object statusObj = partyInfo.get("status");
+            if (!"SUCCEEDED".equals(statusObj)) {
+                throw new RuntimeException("party=" + normalized + " 任务未成功，当前状态: " + statusObj);
+            }
+            Object pathObj = partyInfo.get("modelPath");
+            if (pathObj == null || "null".equals(String.valueOf(pathObj))) {
+                throw new RuntimeException("party=" + normalized + " 没有模型文件路径");
+            }
+            modelPath = String.valueOf(pathObj);
+
+            // 从 jobs 字段取 jobId
+            Map<String, Object> jobs = (Map<String, Object>) result.get("jobs");
+            if (jobs != null) {
+                Map<String, Object> jobInfo = (Map<String, Object>) jobs.get(normalized);
+                if (jobInfo != null) {
+                    jobId = (String) jobInfo.get("job_id");
+                }
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new RuntimeException("解析任务结果失败: " + e.getMessage(), e);
+        }
+
+        // 找到该方对应的节点
+        String partyNodeId;
+        if ("alice".equals(normalized)) {
+            partyNodeId = task.getfParticipants() != null && task.getfParticipants().contains(",")
+                ? task.getfParticipants().split(",")[0].trim()
+                : task.getfParticipants();
+        } else {
+            String[] parts = task.getfParticipants().split(",");
+            partyNodeId = parts.length > 1 ? parts[1].trim() : parts[0].trim();
+        }
+        TbNode node = nodeService.getNode(partyNodeId);
+        if (node == null || node.getfEndpoint() == null) {
+            throw new RuntimeException("节点未找到或未注册端点: " + partyNodeId);
+        }
+
+        // 用旁路端点下载，不依赖 Ray 集群和 jobId 鉴权
+        // modelPath 是 Agent 本地文件系统路径，Ray 集群停止后仍可访问
+        return agentClient.downloadNodeFile(node.getfEndpoint(), modelPath);
     }
 
     @Override
@@ -241,14 +310,16 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
         Map<String, Object> result = new HashMap<>();
         result.put("list", list);
         long total = 0;
-        if (pageResult != null && pageResult.getPagination() != null) {
+        if (pageResult != null && pageResult.getPagination() != null && pageResult.getPagination().getTotal() > 0) {
             total = pageResult.getPagination().getTotal();
+        } else {
+            total = list.size();
         }
-        result.put("pagination", Map.of(
-            "currentPage", page,
-            "pageSize", size,
-            "total", total
-        ));
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("currentPage", page);
+        pagination.put("pageSize", size);
+        pagination.put("total", total);
+        result.put("pagination", pagination);
         return result;
     }
 
@@ -295,11 +366,42 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
         String taskId = executePsiTask(taskName, partyADataPath, partyBDataPath, keyColumn, effectiveParams);
         executeTask(taskId);
         return waitForTaskResult(taskId, timeoutSeconds);
+
+    }
+    @Override
+    public String createPirTask(Map<String, Object> params) {
+        // PIR 任务参数
+        String taskName = (String) params.getOrDefault("taskName", "PIR-" + System.currentTimeMillis());
+
+        // 创建 PIR 任务（只创建，不执行）
+        Map<String, Object> taskParams = new HashMap<>();
+        taskParams.put("computeType", "PIR");
+        taskParams.put("name", taskName);
+        taskParams.put("serverNodeId", params.get("serverNodeId"));
+        taskParams.put("clientNodeId", params.get("clientNodeId"));
+        taskParams.put("inputPath", params.get("inputPath"));
+        taskParams.put("keyColumn", params.get("keyColumn"));
+        taskParams.put("labelColumns", params.get("labelColumns"));
+        taskParams.put("queryValue", params.get("queryValue"));
+        taskParams.put("pirType", params.getOrDefault("pirType", "SealPIR"));
+        taskParams.put("nodeMode", params.getOrDefault("nodeMode", "RAY"));
+
+        String taskId = createTask(taskParams);
+        log.info("PIR task {} created (待执行), pirType={}", taskId, params.get("pirType"));
+        return taskId;
     }
 
     @Override
-    public String executeMpcTask(String taskName, List<String> participants,
-                                  String algorithm, Map<String, Object> params) {
+    public Map<String, Object> executePirTaskWithResult(Map<String, Object> params) {
+        // 创建 + 执行 + 等待结果（向后兼容）
+        String taskId = createPirTask(params);
+        executeTask(taskId);
+        return waitForTaskResult(taskId, 300);
+    }
+
+    @Override
+    public String createMpcTask(String taskName, List<String> participants,
+                                 String algorithm, Map<String, Object> params) {
         Map<String, Object> taskParams = new HashMap<>();
         taskParams.put("computeType", "MPC");
         taskParams.put("name", taskName);
@@ -311,18 +413,36 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
     }
 
     @Override
-    public String executeFederatedLearningTask(String taskName, List<String> participants,
-                                                String labelColumn, List<String> featureColumns,
-                                                Map<String, Object> params) {
+    public String createFederatedLearningTask(String taskName, List<String> participants,
+                                               String labelColumn, List<String> featureColumns,
+                                               Map<String, Object> params) {
         Map<String, Object> taskParams = new HashMap<>();
         taskParams.put("computeType", "FEDERATED_LEARNING");
         taskParams.put("name", taskName);
         taskParams.put("participants", participants);
         taskParams.put("labelColumn", labelColumn);
-        taskParams.put("featureColumns", featureColumns);
+        taskParams.put("featureColumns", featureColumns != null ? String.join(",", featureColumns) : null);
         taskParams.put("nodeMode", params.getOrDefault("nodeMode", "RAY"));
 
-        // 联邦学习特定参数
+        // 节点和数据路径参数
+        if (params.get("partyANodeId") != null) {
+            taskParams.put("partyANodeId", String.valueOf(params.get("partyANodeId")));
+        } else if (participants != null && participants.size() >= 1) {
+            taskParams.put("partyANodeId", participants.get(0));
+        }
+        if (params.get("partyBNodeId") != null) {
+            taskParams.put("partyBNodeId", String.valueOf(params.get("partyBNodeId")));
+        } else if (participants != null && participants.size() >= 2) {
+            taskParams.put("partyBNodeId", participants.get(1));
+        }
+        if (params.get("partyADataPath") != null) {
+            taskParams.put("partyADataPath", String.valueOf(params.get("partyADataPath")));
+        }
+        if (params.get("partyBDataPath") != null) {
+            taskParams.put("partyBDataPath", String.valueOf(params.get("partyBDataPath")));
+        }
+
+        // 横向联邦特定参数
         if (params.get("modelType") != null) {
             taskParams.put("modelType", params.get("modelType")); // LR/NN/XGB
         }
@@ -340,16 +460,48 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
     }
 
     @Override
-    public String executeVerticalFlTask(String taskName, List<String> participants,
-                                         String labelColumn, Map<String, List<String>> featureColumns,
-                                         Map<String, Object> params) {
+    public String createVerticalFlTask(String taskName, List<String> participants,
+                                        String labelColumn, Map<String, List<String>> featureColumns,
+                                        Map<String, Object> params) {
         Map<String, Object> taskParams = new HashMap<>();
         taskParams.put("computeType", "VERTICAL_FL");
         taskParams.put("name", taskName);
         taskParams.put("participants", participants);
         taskParams.put("labelColumn", labelColumn);
-        taskParams.put("featureColumns", featureColumns);
         taskParams.put("nodeMode", params.getOrDefault("nodeMode", "RAY"));
+
+        // VFL 特定参数：节点ID、数据路径、ID列、标签持有方
+        if (params.get("partyANodeId") != null) {
+            taskParams.put("partyANodeId", String.valueOf(params.get("partyANodeId")));
+        } else if (participants != null && participants.size() >= 1) {
+            taskParams.put("partyANodeId", participants.get(0));
+        }
+        if (params.get("partyBNodeId") != null) {
+            taskParams.put("partyBNodeId", String.valueOf(params.get("partyBNodeId")));
+        } else if (participants != null && participants.size() >= 2) {
+            taskParams.put("partyBNodeId", participants.get(1));
+        }
+        if (params.get("partyADataPath") != null) {
+            taskParams.put("partyADataPath", String.valueOf(params.get("partyADataPath")));
+        }
+        if (params.get("partyBDataPath") != null) {
+            taskParams.put("partyBDataPath", String.valueOf(params.get("partyBDataPath")));
+        }
+        if (params.get("idColumn") != null) {
+            taskParams.put("idColumn", String.valueOf(params.get("idColumn")));
+        }
+        if (params.get("labelOwner") != null) {
+            taskParams.put("labelOwner", String.valueOf(params.get("labelOwner")));
+        } else {
+            // 默认标签持有方为第一个参与方
+            taskParams.put("labelOwner", participants != null && !participants.isEmpty() ? participants.get(0) : "alice");
+        }
+
+        // featureColumns 是 Map<String, List<String>>，需要序列化
+        if (featureColumns != null) {
+            taskParams.put("partyAFeatureColumns", String.join(",", featureColumns.getOrDefault("alice", List.of())));
+            taskParams.put("partyBFeatureColumns", String.join(",", featureColumns.getOrDefault("bob", List.of())));
+        }
 
         return createTask(taskParams);
     }
@@ -604,14 +756,16 @@ public class PrivacyComputeServiceImpl implements IPrivacyComputeService {
         Map<String, Object> result = new HashMap<>();
         result.put("list", list);
         long total = 0;
-        if (pageResult != null && pageResult.getPagination() != null) {
+        if (pageResult != null && pageResult.getPagination() != null && pageResult.getPagination().getTotal() > 0) {
             total = pageResult.getPagination().getTotal();
+        } else {
+            total = list.size();
         }
-        result.put("pagination", Map.of(
-            "currentPage", page,
-            "pageSize", size,
-            "total", total
-        ));
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("currentPage", page);
+        pagination.put("pageSize", size);
+        pagination.put("total", total);
+        result.put("pagination", pagination);
         return result;
     }
 

@@ -53,6 +53,15 @@ RUN pip install --no-cache-dir \
         'sf_heu==0.6.0.dev20250514' \
         'secretflow-lite==1.13.0b0'
 
+# Copy PIR binary from official PSI image
+# 二进制在镜像内 /root/main，ENTRYPOINT ["../main"]
+COPY --from=secretflow-registry.cn-hangzhou.cr.aliyuncs.com/secretflow/psi-anolis8:latest \
+    /root/main /usr/local/bin/psi-main
+
+# Copy nsjail (optional, used by the binary)
+COPY --from=secretflow-registry.cn-hangzhou.cr.aliyuncs.com/secretflow/psi-anolis8:latest \
+    /usr/local/bin/nsjail /usr/local/bin/nsjail
+
 # Create work directory
 WORKDIR /app
 

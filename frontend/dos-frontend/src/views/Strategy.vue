@@ -28,7 +28,7 @@
 const strategies = [
   { type: 'DATA_SERVICE', name: '数据服务策略', desc: 'SFTP交付、HTTP推送、数据库同步', color: 'blue' },
   { type: 'SANDBOX', name: '安全沙盒策略', desc: 'Kata容器、TEE运行时、JupyterLab', color: 'green' },
-  { type: 'PRIVACY_COMPUTE', name: '隐私计算策略', desc: 'SecretFlow PSI求交、联邦学习', color: 'purple' }
+  { type: 'PRIVACY_COMPUTE', name: '隐私计算策略', desc: 'SecretFlow PSI求交、横向联邦', color: 'purple' }
 ]
 </script>
 

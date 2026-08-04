@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: dos-api
+  config:
+    import: optional:nacos:${SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR:nacos:8848}/nacos/default
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DOS_GROUP}
+      config:
+        server-addr: ${SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DOS_GROUP}
+        file-extension: yml
+        shared-configs:
+          - data-id: common.yml
+            group: COMMON_GROUP
+            refresh: true
