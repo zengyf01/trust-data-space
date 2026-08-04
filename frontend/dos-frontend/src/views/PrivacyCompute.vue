@@ -37,7 +37,7 @@
     <!-- 任务详情弹窗 -->
     <a-modal v-model:open="taskDetailVisible" title="任务详情" :footer="null" width="1000px">
       <a-tabs v-if="currentTask" v-model:activeKey="detailActiveTab">
-        <!-- 基本信息页签 -->
+        <!-- 基本信息页签（已合并任务参数） -->
         <a-tab-pane key="basic" tab="基本信息">
           <!-- 公共字段区 -->
           <a-descriptions :column="2" size="small" bordered title="基本信息">
@@ -59,41 +59,144 @@
             <a-descriptions-item label="描述" :span="2">{{ currentTask.description || '-' }}</a-descriptions-item>
           </a-descriptions>
 
-          <!-- 参与方字段区 -->
-          <a-descriptions
-            :column="2"
-            size="small"
-            bordered
-            title="参与方"
-            style="margin-top: 16px"
-          >
-            <a-descriptions-item label="参与方列表" :span="2">
-              <a-tag v-for="p in (currentTask.participants || '').split(',').filter(x => x.trim())" :key="p" style="margin: 2px">{{ p.trim() }}</a-tag>
-              <span v-if="!(currentTask.participants || '').split(',').filter(x => x.trim()).length">-</span>
-            </a-descriptions-item>
-            <a-descriptions-item label="A方节点" v-if="currentTask.partyANodeId">
-              <a-typography-paragraph copyable style="margin: 0">{{ currentTask.partyANodeId }}</a-typography-paragraph>
-            </a-descriptions-item>
-            <a-descriptions-item label="B方节点" v-if="currentTask.partyBNodeId">
-              <a-typography-paragraph copyable style="margin: 0">{{ currentTask.partyBNodeId }}</a-typography-paragraph>
-            </a-descriptions-item>
-            <a-descriptions-item label="A方数据路径" v-if="currentTask.partyADataPath" :span="2">
-              <code>{{ currentTask.partyADataPath }}</code>
-            </a-descriptions-item>
-            <a-descriptions-item label="B方数据路径" v-if="currentTask.partyBDataPath" :span="2">
-              <code>{{ currentTask.partyBDataPath }}</code>
-            </a-descriptions-item>
-          </a-descriptions>
-        </a-tab-pane>
+          <!-- 参与方字段区（A方/B方分开彩色 Card） -->
+          <div class="party-section" style="margin-top: 16px">
+            <h4 class="section-subtitle">👥 参与方</h4>
+            <div class="party-row">
+              <!-- A 方 -->
+              <a-card size="small" class="party-card party-card-a">
+                <template #title>
+                  <span class="party-icon">🅰️</span>
+                  <span>A 方</span>
+                </template>
+                <a-descriptions :column="1" size="small" :colon="false">
+                  <a-descriptions-item label="节点">
+                    <a-typography-paragraph v-if="currentTask.partyANodeId" copyable style="margin: 0">{{ currentTask.partyANodeId }}</a-typography-paragraph>
+                    <span v-else>-</span>
+                  </a-descriptions-item>
+                  <a-descriptions-item label="数据路径" v-if="currentTask.partyADataPath">
+                    <code>{{ currentTask.partyADataPath }}</code>
+                  </a-descriptions-item>
+                </a-descriptions>
+              </a-card>
+              <!-- B 方 -->
+              <a-card size="small" class="party-card party-card-b">
+                <template #title>
+                  <span class="party-icon">🅱️</span>
+                  <span>B 方</span>
+                </template>
+                <a-descriptions :column="1" size="small" :colon="false">
+                  <a-descriptions-item label="节点">
+                    <a-typography-paragraph v-if="currentTask.partyBNodeId" copyable style="margin: 0">{{ currentTask.partyBNodeId }}</a-typography-paragraph>
+                    <span v-else>-</span>
+                  </a-descriptions-item>
+                  <a-descriptions-item label="数据路径" v-if="currentTask.partyBDataPath">
+                    <code>{{ currentTask.partyBDataPath }}</code>
+                  </a-descriptions-item>
+                </a-descriptions>
+              </a-card>
+            </div>
+            <!-- 参与方列表（多参与方时） -->
+            <div v-if="(currentTask.participants || '').split(',').filter(x => x.trim()).length > 0" class="participants-tags" style="margin-top: 8px">
+              <span style="color: #595959; margin-right: 8px">参与方列表：</span>
+              <a-tag v-for="p in (currentTask.participants || '').split(',').filter(x => x.trim())" :key="p" color="blue" style="margin: 2px">{{ p.trim() }}</a-tag>
+            </div>
+          </div>
 
-        <!-- 任务参数页签 -->
-        <a-tab-pane key="params" tab="任务参数">
-          <a-empty v-if="!taskParams || Object.keys(taskParams).length === 0" description="暂无任务参数" />
-          <a-descriptions v-else :column="2" size="small" bordered>
-            <a-descriptions-item v-for="(value, key) in taskParams" :key="key" :label="formatParamKey(key)">
-              {{ value || '-' }}
-            </a-descriptions-item>
-          </a-descriptions>
+          <!-- 任务参数区（按参与方分组） -->
+          <div v-if="taskParams && Object.keys(taskParams).length > 0" class="task-params-section" style="margin-top: 16px">
+            <h4 class="section-subtitle">📋 任务参数</h4>
+
+            <!-- 基础参数（公共字段） -->
+            <a-descriptions
+              v-if="getParamGroup('basic').length > 0"
+              :column="2"
+              size="small"
+              bordered
+              title="基础参数"
+              style="margin-top: 8px"
+            >
+              <a-descriptions-item v-for="item in getParamGroup('basic')" :key="item.key" :label="item.label">
+                {{ item.value || '-' }}
+              </a-descriptions-item>
+            </a-descriptions>
+
+            <!-- A 方参数 -->
+            <a-card
+              v-if="getParamGroup('partyA').length > 0"
+              size="small"
+              class="party-card party-card-a"
+              style="margin-top: 16px"
+            >
+              <template #title>
+                <span class="party-icon">🅰️</span>
+                <span>A 方参数</span>
+              </template>
+              <a-descriptions :column="1" size="small" :colon="false">
+                <a-descriptions-item v-for="item in getParamGroup('partyA')" :key="item.key" :label="item.label">
+                  <code v-if="isCodeLike(item.value)">{{ item.value || '-' }}</code>
+                  <span v-else>{{ item.value || '-' }}</span>
+                </a-descriptions-item>
+              </a-descriptions>
+            </a-card>
+
+            <!-- B 方参数 -->
+            <a-card
+              v-if="getParamGroup('partyB').length > 0"
+              size="small"
+              class="party-card party-card-b"
+              style="margin-top: 16px"
+            >
+              <template #title>
+                <span class="party-icon">🅱️</span>
+                <span>B 方参数</span>
+              </template>
+              <a-descriptions :column="1" size="small" :colon="false">
+                <a-descriptions-item v-for="item in getParamGroup('partyB')" :key="item.key" :label="item.label">
+                  <code v-if="isCodeLike(item.value)">{{ item.value || '-' }}</code>
+                  <span v-else>{{ item.value || '-' }}</span>
+                </a-descriptions-item>
+              </a-descriptions>
+            </a-card>
+
+            <!-- 服务端参数（PIR） -->
+            <a-card
+              v-if="getParamGroup('server').length > 0"
+              size="small"
+              class="party-card party-card-server"
+              style="margin-top: 16px"
+            >
+              <template #title>
+                <span class="party-icon">🗄️</span>
+                <span>服务端参数</span>
+              </template>
+              <a-descriptions :column="1" size="small" :colon="false">
+                <a-descriptions-item v-for="item in getParamGroup('server')" :key="item.key" :label="item.label">
+                  <code v-if="isCodeLike(item.value)">{{ item.value || '-' }}</code>
+                  <span v-else>{{ item.value || '-' }}</span>
+                </a-descriptions-item>
+              </a-descriptions>
+            </a-card>
+
+            <!-- 客户端参数（PIR） -->
+            <a-card
+              v-if="getParamGroup('client').length > 0"
+              size="small"
+              class="party-card party-card-client"
+              style="margin-top: 16px"
+            >
+              <template #title>
+                <span class="party-icon">🔍</span>
+                <span>客户端参数</span>
+              </template>
+              <a-descriptions :column="1" size="small" :colon="false">
+                <a-descriptions-item v-for="item in getParamGroup('client')" :key="item.key" :label="item.label">
+                  <code v-if="isCodeLike(item.value)">{{ item.value || '-' }}</code>
+                  <span v-else>{{ item.value || '-' }}</span>
+                </a-descriptions-item>
+              </a-descriptions>
+            </a-card>
+          </div>
         </a-tab-pane>
 
         <!-- 执行脚本页签（按任务类型动态命名） -->
@@ -344,6 +447,58 @@ const formatParamKey = (key) => {
     'queryValue': '查询值'
   }
   return keyMap[key] || key
+}
+
+// 参数分组规则：key 前缀匹配对应分组
+const PARAM_GROUP_RULES = [
+  { group: 'partyA', prefix: 'partyA' },
+  { group: 'partyB', prefix: 'partyB' },
+  { group: 'server', prefix: 'server' },
+  { group: 'client', prefix: 'client' }
+]
+// 明确归入"基础参数"的 key
+const BASIC_PARAM_KEYS = new Set([
+  'computeType', 'algorithm', 'selfParty', 'nodeMode',
+  'keyColumn', 'protocol', 'resultType', 'receiver',
+  'labelColumn', 'featureColumns', 'modelType', 'deliveryMode',
+  'epochs', 'batchSize', 'learningRate', 'modelPath',
+  'idColumn', 'labelOwner',
+  'queryColumn', 'databasePath', 'queryValue'
+])
+
+// 按分组获取参数项
+const getParamGroup = (group) => {
+  if (!taskParams.value) return []
+  const items = []
+  for (const [key, value] of Object.entries(taskParams.value)) {
+    let matchedGroup = null
+    // 优先按前缀匹配
+    for (const rule of PARAM_GROUP_RULES) {
+      if (key === rule.prefix || key.startsWith(rule.prefix)) {
+        matchedGroup = rule.group
+        break
+      }
+    }
+    // 未匹配前缀的，检查是否在基础参数白名单
+    if (!matchedGroup) {
+      if (BASIC_PARAM_KEYS.has(key)) {
+        matchedGroup = 'basic'
+      } else {
+        continue // 跳过无法识别的字段
+      }
+    }
+    if (matchedGroup === group) {
+      items.push({ key, label: formatParamKey(key), value })
+    }
+  }
+  return items
+}
+
+// 判断 value 是否像代码/路径（用 <code> 标签）
+const isCodeLike = (value) => {
+  if (!value || typeof value !== 'string') return false
+  // 文件路径、节点 ID 等
+  return /^[\/]?[a-zA-Z0-9_\-\/\.]+$/.test(value) && (value.includes('/') || value.includes('-'))
 }
 
 // 根据任务类型返回脚本 Tab 名
@@ -697,6 +852,99 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 区域标题 */
+.section-subtitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin: 0 0 12px 0;
+  padding: 6px 12px;
+  background: #f5f7fa;
+  border-left: 3px solid #1890ff;
+  border-radius: 3px;
+}
+
+/* 参与方卡片 */
+.party-section {
+  margin-bottom: 16px;
+}
+.party-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 16px;
+}
+.party-card {
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.party-card :deep(.ant-card-head) {
+  min-height: 44px;
+  padding: 0 14px;
+  border-bottom: 2px solid transparent;
+}
+.party-card :deep(.ant-card-head-title) {
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.party-icon {
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: white;
+}
+/* A 方：蓝色 */
+.party-card-a :deep(.ant-card-head) {
+  background: #e6f4ff;
+  border-bottom-color: #91caff;
+}
+.party-card-a .party-icon {
+  background: #1677ff;
+}
+/* B 方：紫色 */
+.party-card-b :deep(.ant-card-head) {
+  background: #f9f0ff;
+  border-bottom-color: #d3adf7;
+}
+.party-card-b .party-icon {
+  background: #722ed1;
+}
+/* 服务端：青色 */
+.party-card-server :deep(.ant-card-head) {
+  background: #e6fffb;
+  border-bottom-color: #87e8de;
+}
+.party-card-server .party-icon {
+  background: #13c2c2;
+}
+/* 客户端：橙色 */
+.party-card-client :deep(.ant-card-head) {
+  background: #fff7e6;
+  border-bottom-color: #ffd591;
+}
+.party-card-client .party-icon {
+  background: #fa8c16;
+}
+.party-card :deep(.ant-descriptions-item-label) {
+  width: 80px;
+  color: #595959;
+  font-size: 12px;
+}
+.party-card :deep(.ant-descriptions-item-content) {
+  font-size: 13px;
+}
+.participants-tags {
+  color: #595959;
+}
+
 /* DAG 样式 */
 .component-item {
   padding: 8px 12px;
